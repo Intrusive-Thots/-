@@ -214,319 +214,328 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
   useEffect(() => {
     if (!svgRef.current || metrics.length < 2) return;
 
-    const svg = d3.select(svgRef.current);
-    const { width, height } = containerDimensions;
+    let rafId: number;
 
-    const margin = { top: 20, right: 28, bottom: 35, left: 45 };
-    const innerWidth = Math.max(10, width - margin.left - margin.right);
-    const innerHeight = Math.max(10, height - margin.top - margin.bottom);
+    rafId = requestAnimationFrame(() => {
+      if (!svgRef.current) return;
+      const svg = d3.select(svgRef.current);
+      const { width, height } = containerDimensions;
 
-    // Clear previous elements
-    svg.selectAll('*').remove();
+      const margin = { top: 20, right: 28, bottom: 35, left: 45 };
+      const innerWidth = Math.max(10, width - margin.left - margin.right);
+      const innerHeight = Math.max(10, height - margin.top - margin.bottom);
 
-    // Setup defs & gradients
-    const defs = svg.append('defs');
+      // Clear previous elements
+      svg.selectAll('*').remove();
 
-    // CPU Area Gradient (Amber / Golden Tactical)
-    const cpuGrad = defs
-      .append('linearGradient')
-      .attr('id', 'cpu-area-gradient')
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '0%')
-      .attr('y2', '100%');
-    cpuGrad.append('stop').attr('offset', '0%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0.4);
-    cpuGrad.append('stop').attr('offset', '70%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0.08);
-    cpuGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0);
+      // Setup defs & gradients
+      const defs = svg.append('defs');
 
-    // Memory Area Gradient (Cyan / Neon Hak5)
-    const memGrad = defs
-      .append('linearGradient')
-      .attr('id', 'mem-area-gradient')
-      .attr('x1', '0%')
-      .attr('y1', '0%')
-      .attr('x2', '0%')
-      .attr('y2', '100%');
-    memGrad.append('stop').attr('offset', '0%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0.35);
-    memGrad.append('stop').attr('offset', '70%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0.06);
-    memGrad.append('stop').attr('offset', '100%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0);
+      // CPU Area Gradient (Amber / Golden Tactical)
+      const cpuGrad = defs
+        .append('linearGradient')
+        .attr('id', 'cpu-area-gradient')
+        .attr('x1', '0%')
+        .attr('y1', '0%')
+        .attr('x2', '0%')
+        .attr('y2', '100%');
+      cpuGrad.append('stop').attr('offset', '0%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0.4);
+      cpuGrad.append('stop').attr('offset', '70%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0.08);
+      cpuGrad.append('stop').attr('offset', '100%').attr('stop-color', '#f59e0b').attr('stop-opacity', 0);
 
-    // Drop shadow filter for active point
-    const filter = defs.append('filter').attr('id', 'glow-filter').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
-    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
-    const feMerge = filter.append('feMerge');
-    feMerge.append('feMergeNode').attr('in', 'coloredBlur');
-    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+      // Memory Area Gradient (Cyan / Neon Hak5)
+      const memGrad = defs
+        .append('linearGradient')
+        .attr('id', 'mem-area-gradient')
+        .attr('x1', '0%')
+        .attr('y1', '0%')
+        .attr('x2', '0%')
+        .attr('y2', '100%');
+      memGrad.append('stop').attr('offset', '0%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0.35);
+      memGrad.append('stop').attr('offset', '70%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0.06);
+      memGrad.append('stop').attr('offset', '100%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0);
 
-    // Scales
-    const timeExtent = d3.extent(metrics, (d: SystemMetricPoint) => new Date(d.timestamp));
-    const xScale = d3
-      .scaleTime()
-      .domain(timeExtent[0] && timeExtent[1] ? [timeExtent[0], timeExtent[1]] : [new Date(), new Date()])
-      .range([margin.left, margin.left + innerWidth]);
+      // Drop shadow filter for active point
+      const filter = defs.append('filter').attr('id', 'glow-filter').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+      filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
+      const feMerge = filter.append('feMerge');
+      feMerge.append('feMergeNode').attr('in', 'coloredBlur');
+      feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
-    const yScale = d3.scaleLinear().domain([0, 100]).range([margin.top + innerHeight, margin.top]);
+      // Scales
+      const timeExtent = d3.extent(metrics, (d: SystemMetricPoint) => new Date(d.timestamp));
+      const xScale = d3
+        .scaleTime()
+        .domain(timeExtent[0] && timeExtent[1] ? [timeExtent[0], timeExtent[1]] : [new Date(), new Date()])
+        .range([margin.left, margin.left + innerWidth]);
 
-    const g = svg.append('g');
+      const yScale = d3.scaleLinear().domain([0, 100]).range([margin.top + innerHeight, margin.top]);
 
-    // Gridlines (Horizontal 25%, 50%, 75%, 100%)
-    const yGridValues = [25, 50, 75, 100];
-    g.append('g')
-      .attr('class', 'grid-lines')
-      .selectAll('line')
-      .data(yGridValues)
-      .enter()
-      .append('line')
-      .attr('x1', margin.left)
-      .attr('x2', margin.left + innerWidth)
-      .attr('y1', (d) => yScale(d))
-      .attr('y2', (d) => yScale(d))
-      .attr('stroke', '#1e293b')
-      .attr('stroke-dasharray', '3,3')
-      .attr('stroke-width', 1);
+      const g = svg.append('g');
 
-    // 80% Critical Threshold Accent Line
-    g.append('line')
-      .attr('x1', margin.left)
-      .attr('x2', margin.left + innerWidth)
-      .attr('y1', yScale(80))
-      .attr('y2', yScale(80))
-      .attr('stroke', '#ef4444')
-      .attr('stroke-dasharray', '4,4')
-      .attr('stroke-opacity', 0.45)
-      .attr('stroke-width', 1.2);
+      // Gridlines (Horizontal 25%, 50%, 75%, 100%)
+      const yGridValues = [25, 50, 75, 100];
+      g.append('g')
+        .attr('class', 'grid-lines')
+        .selectAll('line')
+        .data(yGridValues)
+        .enter()
+        .append('line')
+        .attr('x1', margin.left)
+        .attr('x2', margin.left + innerWidth)
+        .attr('y1', (d) => yScale(d))
+        .attr('y2', (d) => yScale(d))
+        .attr('stroke', '#1e293b')
+        .attr('stroke-dasharray', '3,3')
+        .attr('stroke-width', 1);
 
-    g.append('text')
-      .attr('x', margin.left + innerWidth - 6)
-      .attr('y', yScale(80) - 4)
-      .attr('text-anchor', 'end')
-      .attr('fill', '#ef4444')
-      .attr('font-size', '9px')
-      .attr('font-family', 'monospace')
-      .attr('opacity', 0.75)
-      .text('80% High Load');
+      // 80% Critical Threshold Accent Line
+      g.append('line')
+        .attr('x1', margin.left)
+        .attr('x2', margin.left + innerWidth)
+        .attr('y1', yScale(80))
+        .attr('y2', yScale(80))
+        .attr('stroke', '#ef4444')
+        .attr('stroke-dasharray', '4,4')
+        .attr('stroke-opacity', 0.45)
+        .attr('stroke-width', 1.2);
 
-    // Area Generators
-    const cpuArea = d3
-      .area<SystemMetricPoint>()
-      .x((d) => xScale(new Date(d.timestamp)))
-      .y0(yScale(0))
-      .y1((d) => yScale(d.cpuPercent))
-      .curve(d3.curveMonotoneX);
+      g.append('text')
+        .attr('x', margin.left + innerWidth - 6)
+        .attr('y', yScale(80) - 4)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#ef4444')
+        .attr('font-size', '9px')
+        .attr('font-family', 'monospace')
+        .attr('opacity', 0.75)
+        .text('80% High Load');
 
-    const memArea = d3
-      .area<SystemMetricPoint>()
-      .x((d) => xScale(new Date(d.timestamp)))
-      .y0(yScale(0))
-      .y1((d) => yScale(d.memPercent))
-      .curve(d3.curveMonotoneX);
+      // Area Generators
+      const cpuArea = d3
+        .area<SystemMetricPoint>()
+        .x((d) => xScale(new Date(d.timestamp)))
+        .y0(yScale(0))
+        .y1((d) => yScale(d.cpuPercent))
+        .curve(d3.curveMonotoneX);
 
-    // Line Generators
-    const cpuLine = d3
-      .line<SystemMetricPoint>()
-      .x((d) => xScale(new Date(d.timestamp)))
-      .y((d) => yScale(d.cpuPercent))
-      .curve(d3.curveMonotoneX);
+      const memArea = d3
+        .area<SystemMetricPoint>()
+        .x((d) => xScale(new Date(d.timestamp)))
+        .y0(yScale(0))
+        .y1((d) => yScale(d.memPercent))
+        .curve(d3.curveMonotoneX);
 
-    const memLine = d3
-      .line<SystemMetricPoint>()
-      .x((d) => xScale(new Date(d.timestamp)))
-      .y((d) => yScale(d.memPercent))
-      .curve(d3.curveMonotoneX);
+      // Line Generators
+      const cpuLine = d3
+        .line<SystemMetricPoint>()
+        .x((d) => xScale(new Date(d.timestamp)))
+        .y((d) => yScale(d.cpuPercent))
+        .curve(d3.curveMonotoneX);
 
-    // Draw Memory Layer First (if visible)
-    if (viewMode === 'all' || viewMode === 'memory') {
-      g.append('path')
-        .datum(metrics)
-        .attr('fill', 'url(#mem-area-gradient)')
-        .attr('d', memArea);
+      const memLine = d3
+        .line<SystemMetricPoint>()
+        .x((d) => xScale(new Date(d.timestamp)))
+        .y((d) => yScale(d.memPercent))
+        .curve(d3.curveMonotoneX);
 
-      g.append('path')
-        .datum(metrics)
-        .attr('fill', 'none')
-        .attr('stroke', '#06b6d4')
-        .attr('stroke-width', 2.2)
-        .attr('d', memLine);
-    }
-
-    // Draw CPU Layer (if visible)
-    if (viewMode === 'all' || viewMode === 'cpu') {
-      g.append('path')
-        .datum(metrics)
-        .attr('fill', 'url(#cpu-area-gradient)')
-        .attr('d', cpuArea);
-
-      g.append('path')
-        .datum(metrics)
-        .attr('fill', 'none')
-        .attr('stroke', '#f59e0b')
-        .attr('stroke-width', 2.2)
-        .attr('d', cpuLine);
-    }
-
-    // Axes
-    const xAxis = d3
-      .axisBottom(xScale)
-      .ticks(Math.max(3, Math.floor(innerWidth / 85)))
-      .tickFormat((d) => d3.timeFormat('%H:%M:%S')(d as Date))
-      .tickSizeOuter(0);
-
-    const yAxis = d3
-      .axisLeft(yScale)
-      .tickValues([0, 25, 50, 75, 100])
-      .tickFormat((d) => `${d}%`)
-      .tickSizeOuter(0);
-
-    // X Axis group
-    const gx = g
-      .append('g')
-      .attr('transform', `translate(0, ${margin.top + innerHeight})`)
-      .call(xAxis);
-
-    gx.select('.domain').attr('stroke', '#334155');
-    gx.selectAll('.tick line').attr('stroke', '#334155');
-    gx.selectAll('.tick text')
-      .attr('fill', '#94a3b8')
-      .attr('font-size', '10px')
-      .attr('font-family', 'monospace')
-      .attr('dy', '10px');
-
-    // Y Axis group
-    const gy = g
-      .append('g')
-      .attr('transform', `translate(${margin.left}, 0)`)
-      .call(yAxis);
-
-    gy.select('.domain').attr('stroke', '#334155');
-    gy.selectAll('.tick line').attr('stroke', '#334155');
-    gy.selectAll('.tick text')
-      .attr('fill', '#94a3b8')
-      .attr('font-size', '10px')
-      .attr('font-family', 'monospace');
-
-    // Pulsing Latest Points
-    const latest = metrics[metrics.length - 1];
-    if (latest) {
-      const latestX = xScale(new Date(latest.timestamp));
-
-      // Latest Memory point
+      // Draw Memory Layer First (if visible)
       if (viewMode === 'all' || viewMode === 'memory') {
-        const latestMemY = yScale(latest.memPercent);
-        g.append('circle')
-          .attr('cx', latestX)
-          .attr('cy', latestMemY)
-          .attr('r', 4.5)
-          .attr('fill', '#06b6d4')
-          .attr('stroke', '#0f172a')
-          .attr('stroke-width', 2)
-          .attr('filter', 'url(#glow-filter)');
+        g.append('path')
+          .datum(metrics)
+          .attr('fill', 'url(#mem-area-gradient)')
+          .attr('d', memArea);
 
-        g.append('circle')
-          .attr('cx', latestX)
-          .attr('cy', latestMemY)
-          .attr('r', 8)
+        g.append('path')
+          .datum(metrics)
           .attr('fill', 'none')
           .attr('stroke', '#06b6d4')
-          .attr('stroke-width', 1.2)
-          .attr('opacity', 0.6)
-          .attr('class', 'animate-ping');
+          .attr('stroke-width', 2.2)
+          .attr('d', memLine);
       }
 
-      // Latest CPU point
+      // Draw CPU Layer (if visible)
       if (viewMode === 'all' || viewMode === 'cpu') {
-        const latestCpuY = yScale(latest.cpuPercent);
-        g.append('circle')
-          .attr('cx', latestX)
-          .attr('cy', latestCpuY)
-          .attr('r', 4.5)
-          .attr('fill', '#f59e0b')
-          .attr('stroke', '#0f172a')
-          .attr('stroke-width', 2)
-          .attr('filter', 'url(#glow-filter)');
+        g.append('path')
+          .datum(metrics)
+          .attr('fill', 'url(#cpu-area-gradient)')
+          .attr('d', cpuArea);
 
-        g.append('circle')
-          .attr('cx', latestX)
-          .attr('cy', latestCpuY)
-          .attr('r', 8)
+        g.append('path')
+          .datum(metrics)
           .attr('fill', 'none')
           .attr('stroke', '#f59e0b')
-          .attr('stroke-width', 1.2)
-          .attr('opacity', 0.6)
-          .attr('class', 'animate-ping');
+          .attr('stroke-width', 2.2)
+          .attr('d', cpuLine);
       }
-    }
 
-    // Hover Elements (Crosshair & Points)
-    const hoverGroup = g.append('g').attr('class', 'hover-elements').style('display', 'none');
+      // Axes
+      const xAxis = d3
+        .axisBottom(xScale)
+        .ticks(Math.max(3, Math.floor(innerWidth / 85)))
+        .tickFormat((d) => d3.timeFormat('%H:%M:%S')(d as Date))
+        .tickSizeOuter(0);
 
-    const crosshair = hoverGroup
-      .append('line')
-      .attr('class', 'crosshair-line')
-      .attr('y1', margin.top)
-      .attr('y2', margin.top + innerHeight)
-      .attr('stroke', '#64748b')
-      .attr('stroke-width', 1)
-      .attr('stroke-dasharray', '3,3');
+      const yAxis = d3
+        .axisLeft(yScale)
+        .tickValues([0, 25, 50, 75, 100])
+        .tickFormat((d) => `${d}%`)
+        .tickSizeOuter(0);
 
-    const cpuHoverDot = hoverGroup
-      .append('circle')
-      .attr('r', 5)
-      .attr('fill', '#f59e0b')
-      .attr('stroke', '#020617')
-      .attr('stroke-width', 2.5);
+      // X Axis group
+      const gx = g
+        .append('g')
+        .attr('transform', `translate(0, ${margin.top + innerHeight})`)
+        .call(xAxis);
 
-    const memHoverDot = hoverGroup
-      .append('circle')
-      .attr('r', 5)
-      .attr('fill', '#06b6d4')
-      .attr('stroke', '#020617')
-      .attr('stroke-width', 2.5);
+      gx.select('.domain').attr('stroke', '#334155');
+      gx.selectAll('.tick line').attr('stroke', '#334155');
+      gx.selectAll('.tick text')
+        .attr('fill', '#94a3b8')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace')
+        .attr('dy', '10px');
 
-    // Bisector for interactive mouse tracking
-    const bisect = d3.bisector<SystemMetricPoint, Date>((d) => new Date(d.timestamp)).center;
+      // Y Axis group
+      const gy = g
+        .append('g')
+        .attr('transform', `translate(${margin.left}, 0)`)
+        .call(yAxis);
 
-    // Overlay Rect for capture
-    svg
-      .append('rect')
-      .attr('class', 'overlay')
-      .attr('x', margin.left)
-      .attr('y', margin.top)
-      .attr('width', innerWidth)
-      .attr('height', innerHeight)
-      .attr('fill', 'transparent')
-      .attr('cursor', 'crosshair')
-      .on('pointermove', function (event) {
-        const [mx] = d3.pointer(event);
-        const hoveredDate = xScale.invert(mx);
-        const index = bisect(metrics, hoveredDate);
-        const point = metrics[index];
+      gy.select('.domain').attr('stroke', '#334155');
+      gy.selectAll('.tick line').attr('stroke', '#334155');
+      gy.selectAll('.tick text')
+        .attr('fill', '#94a3b8')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace');
 
-        if (!point) return;
+      // Pulsing Latest Points
+      const latest = metrics[metrics.length - 1];
+      if (latest) {
+        const latestX = xScale(new Date(latest.timestamp));
 
-        setHoveredPoint(point);
-        const px = xScale(new Date(point.timestamp));
-        const pyCpu = yScale(point.cpuPercent);
-        const pyMem = yScale(point.memPercent);
-
-        hoverGroup.style('display', null);
-        crosshair.attr('x1', px).attr('x2', px);
-
-        if (viewMode === 'all' || viewMode === 'cpu') {
-          cpuHoverDot.style('display', null).attr('cx', px).attr('cy', pyCpu);
-        } else {
-          cpuHoverDot.style('display', 'none');
-        }
-
+        // Latest Memory point
         if (viewMode === 'all' || viewMode === 'memory') {
-          memHoverDot.style('display', null).attr('cx', px).attr('cy', pyMem);
-        } else {
-          memHoverDot.style('display', 'none');
+          const latestMemY = yScale(latest.memPercent);
+          g.append('circle')
+            .attr('cx', latestX)
+            .attr('cy', latestMemY)
+            .attr('r', 4.5)
+            .attr('fill', '#06b6d4')
+            .attr('stroke', '#0f172a')
+            .attr('stroke-width', 2)
+            .attr('filter', 'url(#glow-filter)');
+
+          g.append('circle')
+            .attr('cx', latestX)
+            .attr('cy', latestMemY)
+            .attr('r', 8)
+            .attr('fill', 'none')
+            .attr('stroke', '#06b6d4')
+            .attr('stroke-width', 1.2)
+            .attr('opacity', 0.6)
+            .attr('class', 'animate-ping');
         }
-      })
-      .on('pointerleave', function () {
-        hoverGroup.style('display', 'none');
-        setHoveredPoint(null);
-      });
+
+        // Latest CPU point
+        if (viewMode === 'all' || viewMode === 'cpu') {
+          const latestCpuY = yScale(latest.cpuPercent);
+          g.append('circle')
+            .attr('cx', latestX)
+            .attr('cy', latestCpuY)
+            .attr('r', 4.5)
+            .attr('fill', '#f59e0b')
+            .attr('stroke', '#0f172a')
+            .attr('stroke-width', 2)
+            .attr('filter', 'url(#glow-filter)');
+
+          g.append('circle')
+            .attr('cx', latestX)
+            .attr('cy', latestCpuY)
+            .attr('r', 8)
+            .attr('fill', 'none')
+            .attr('stroke', '#f59e0b')
+            .attr('stroke-width', 1.2)
+            .attr('opacity', 0.6)
+            .attr('class', 'animate-ping');
+        }
+      }
+
+      // Hover Elements (Crosshair & Points)
+      const hoverGroup = g.append('g').attr('class', 'hover-elements').style('display', 'none');
+
+      const crosshair = hoverGroup
+        .append('line')
+        .attr('class', 'crosshair-line')
+        .attr('y1', margin.top)
+        .attr('y2', margin.top + innerHeight)
+        .attr('stroke', '#64748b')
+        .attr('stroke-width', 1)
+        .attr('stroke-dasharray', '3,3');
+
+      const cpuHoverDot = hoverGroup
+        .append('circle')
+        .attr('r', 5)
+        .attr('fill', '#f59e0b')
+        .attr('stroke', '#020617')
+        .attr('stroke-width', 2.5);
+
+      const memHoverDot = hoverGroup
+        .append('circle')
+        .attr('r', 5)
+        .attr('fill', '#06b6d4')
+        .attr('stroke', '#020617')
+        .attr('stroke-width', 2.5);
+
+      // Bisector for interactive mouse tracking
+      const bisect = d3.bisector<SystemMetricPoint, Date>((d) => new Date(d.timestamp)).center;
+
+      // Overlay Rect for capture
+      svg
+        .append('rect')
+        .attr('class', 'overlay')
+        .attr('x', margin.left)
+        .attr('y', margin.top)
+        .attr('width', innerWidth)
+        .attr('height', innerHeight)
+        .attr('fill', 'transparent')
+        .attr('cursor', 'crosshair')
+        .on('pointermove', function (event) {
+          const [mx] = d3.pointer(event);
+          const hoveredDate = xScale.invert(mx);
+          const index = bisect(metrics, hoveredDate);
+          const point = metrics[index];
+
+          if (!point) return;
+
+          setHoveredPoint(point);
+          const px = xScale(new Date(point.timestamp));
+          const pyCpu = yScale(point.cpuPercent);
+          const pyMem = yScale(point.memPercent);
+
+          hoverGroup.style('display', null);
+          crosshair.attr('x1', px).attr('x2', px);
+
+          if (viewMode === 'all' || viewMode === 'cpu') {
+            cpuHoverDot.style('display', null).attr('cx', px).attr('cy', pyCpu);
+          } else {
+            cpuHoverDot.style('display', 'none');
+          }
+
+          if (viewMode === 'all' || viewMode === 'memory') {
+            memHoverDot.style('display', null).attr('cx', px).attr('cy', pyMem);
+          } else {
+            memHoverDot.style('display', 'none');
+          }
+        })
+        .on('pointerleave', function () {
+          hoverGroup.style('display', 'none');
+          setHoveredPoint(null);
+        });
+    });
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
   }, [metrics, containerDimensions, viewMode]);
 
   // Export current metrics buffer as JSON
