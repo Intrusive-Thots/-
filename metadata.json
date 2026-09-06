@@ -1,0 +1,6 @@
+{
+  "name": "WiFi Pineapple SSH Controller",
+  "description": "Connect via SSH to your WiFi Pineapple hardware to run scripts, automated payload schedules, terminal commands, manage PineAP, and analyze output with AI assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
