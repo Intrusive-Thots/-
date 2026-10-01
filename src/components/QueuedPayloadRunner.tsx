@@ -33,6 +33,7 @@ interface QueuedPayloadRunnerProps {
   useSimulation: boolean;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onHostFingerprint?: (fingerprint: string) => void;
   onClose?: () => void;
 }
 
@@ -41,6 +42,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
   useSimulation,
   onAddExecutionLog,
   onAnalyzeLog,
+  onHostFingerprint,
   onClose,
 }) => {
   // Load templates (initial + any local custom templates)
@@ -352,9 +354,10 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
         });
 
         const data = await res.json();
+        if (data.hostFingerprint) onHostFingerprint?.(data.hostFingerprint);
         const itemDurationMs = Date.now() - itemStartTime;
 
-        if (res.ok && data.success && (data.exitCode === 0 || data.exitCode === null)) {
+        if (res.ok && data.success && data.exitCode === 0) {
           currentQueue[i].status = 'completed';
           currentQueue[i].stdout = data.stdout || '';
           currentQueue[i].stderr = data.stderr || '';

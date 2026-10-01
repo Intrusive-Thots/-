@@ -1,9 +1,11 @@
 import express from "express";
+import crypto from "crypto";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { Client as SSHClient } from "ssh2";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { cpuPercentBetween, parseProcStatCpu, type CpuSample } from "./src/utils/deviceStats.ts";
 
 dotenv.config();
 
@@ -17,7 +19,11 @@ interface SSHConfigBody {
   passphrase?: string;
   timeoutMs?: number;
   useSimulation?: boolean;
+  hostFingerprint?: string;
 }
+
+const MAX_STREAM_CHARS = 200_000;
+const previousCpuSamples = new Map<string, CpuSample>();
 
 // Simulated data generator for offline/demo testing
 let simulatedCrontab = `# OpenWrt root crontab on WiFi Pineapple Mark VII
@@ -30,6 +36,116 @@ let simMemUsedMb = 118;
 let simLoad1 = 0.22;
 let simLoad5 = 0.25;
 let simLoad15 = 0.19;
+let simulatedPineapEnabled = true;
+
+function simulatedIfconfig(): string {
+  return `eth0      Link encap:Ethernet  HWaddr 00:13:37:A4:B2:10  
+          inet addr:192.168.1.150  Bcast:192.168.1.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+
+wlan0     Link encap:Ethernet  HWaddr 00:13:37:A4:B2:11  
+          inet addr:172.16.42.1  Bcast:172.16.42.255  Mask:255.255.255.0
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+
+wlan1mon  Link encap:Ethernet  HWaddr 00:13:37:A4:B2:12  
+          UP BROADCAST RUNNING MONITOR  MTU:1500  Metric:1
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1`;
+}
+
+function simulatedPineapReport(): string {
+  const enabled = simulatedPineapEnabled;
+  return `PineAP Status: ${enabled ? 'ACTIVE' : 'STOPPED'}
+SSID Pool: 42 SSIDs loaded
+Karma: ${enabled ? 'ENABLED' : 'DISABLED'}
+AP Pool: ${enabled ? 'ENABLED' : 'DISABLED'}
+Doghouse: DISABLED
+Recon Engine: IDLE`;
+}
+
+function simulatedStatsReport(): string {
+  const memFree = 256 - simMemUsedMb;
+  return `===RELEASE===
+DISTRIB_ID='OpenWrt'
+DISTRIB_RELEASE='21.02.3'
+DISTRIB_DESCRIPTION='WiFi Pineapple Mark VII Firmware v2.1.2 (Hak5 OS)'
+Linux WiFiPineapple 5.4.188
+===UPTIME===
+04:12:33 up 4:12, load average: ${simLoad1.toFixed(2)}, ${simLoad5.toFixed(2)}, ${simLoad15.toFixed(2)}
+===FREE===
+              total        used        free      shared  buff/cache   available
+Mem:            256         ${simMemUsedMb}          ${memFree}           4          40         ${memFree}
+===DF===
+Filesystem                Size      Used Available Use% Mounted on
+/dev/root                16.0M     12.4M      3.6M  78% /
+/dev/sda1                29.8G      2.1G     27.7G   7% /sd
+===IFCONFIG===
+${simulatedIfconfig()}
+===PINEAP===
+${simulatedPineapReport()}`;
+}
+
+function applySimulatedPineap(trimmed: string): { stdout: string; stderr: string; exitCode: number } {
+  const stop = /\b(disable|stop)\b/.test(trimmed);
+  const start = /\b(enable|start)\b/.test(trimmed);
+  if (stop && !start) simulatedPineapEnabled = false;
+  else if (start) simulatedPineapEnabled = true;
+  const status = simulatedPineapReport();
+  if (stop && !start) {
+    return {
+      stdout: `[-] PineAP suite stopped.\n[-] Broadcaster disabled.\n${status}`,
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+  if (start) {
+    return {
+      stdout: `[+] PineAP suite started successfully.\n[+] Beacon broadcaster active on 2.4GHz channel 6.\n${status}`,
+      stderr: '',
+      exitCode: 0,
+    };
+  }
+  return { stdout: status, stderr: '', exitCode: 0 };
+}
+
+function safeScriptFilename(filename: unknown): string {
+  const fallback = `payload_${Date.now()}.sh`;
+  if (typeof filename !== 'string') return fallback;
+  const base = path.basename(filename).replace(/[^A-Za-z0-9._-]/g, '');
+  if (!base || base.startsWith('.') || base.length > 64) return fallback;
+  return base;
+}
+
+function appendCapped(current: string, chunk: string): string {
+  if (current.length >= MAX_STREAM_CHARS) return current;
+  const next = current + chunk;
+  if (next.length <= MAX_STREAM_CHARS) return next;
+  return `${next.slice(0, MAX_STREAM_CHARS)}\n[output truncated]`;
+}
+
+function fingerprintsMatch(expected: string, actual: string): boolean {
+  const left = Buffer.from(expected);
+  const right = Buffer.from(actual);
+  if (left.length === 0 || left.length !== right.length) return false;
+  return crypto.timingSafeEqual(left, right);
+}
+
+function validateHardwareConfig(config: SSHConfigBody): void {
+  if (config.useSimulation) return;
+  const host = (config.host || '').trim();
+  if (!host) throw new Error('A target host is required.');
+  const port = Number(config.port ?? 22);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('SSH port must be an integer from 1 to 65535.');
+  }
+  if (config.authType === 'key') {
+    if (!config.privateKey?.trim()) throw new Error('Private key authentication requires a private key.');
+  } else if (!config.password) {
+    throw new Error('Hardware SSH requires a password. Turn on simulation to work without a device.');
+  }
+}
 
 function getSimulatedTelemetryPoint() {
   // Drift CPU with smooth random walk clamped 6% - 92%
@@ -66,6 +182,10 @@ function getSimulatedTelemetryPoint() {
 
 function getSimulatedOutput(command: string): { stdout: string; stderr: string; exitCode: number } {
   const trimmed = command.trim();
+
+  if (trimmed.includes('===UPTIME===') || trimmed.includes('===RELEASE===') || trimmed.includes('===FREE===')) {
+    return { stdout: simulatedStatsReport(), stderr: '', exitCode: 0 };
+  }
 
   // Crontab inspection & operations
   if (trimmed === 'crontab -l' || trimmed.includes('cat /etc/crontabs/root')) {
@@ -135,59 +255,12 @@ function getSimulatedOutput(command: string): { stdout: string; stderr: string; 
   }
 
   if (trimmed.includes('pineap')) {
-    if (trimmed.includes('get_status') || trimmed.includes('status')) {
-      return {
-        stdout: `PineAP Status: ACTIVE
-Target: FF:FF:FF:FF:FF:FF (BROADCAST)
-SSID Pool: 42 SSIDs loaded
-Karma: ENABLED
-AP Pool: ENABLED
-Doghouse: DISABLED
-Recon Engine: IDLE (Scanner ready on wlan1mon)
-Active Associations: 3 Clients connected`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
-    if (trimmed.includes('enable') || trimmed.includes('start')) {
-      return {
-        stdout: `[+] PineAP suite started successfully.\n[+] Interface wlan0 set to Master.\n[+] Beacon broadcaster active on 2.4GHz channel 6.`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
-    if (trimmed.includes('disable') || trimmed.includes('stop')) {
-      return {
-        stdout: `[-] PineAP suite stopped.\n[-] Broadcaster disabled.`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
+    return applySimulatedPineap(trimmed);
   }
 
   if (trimmed === 'ifconfig' || trimmed.includes('ifconfig')) {
     return {
-      stdout: `eth0      Link encap:Ethernet  HWaddr 00:13:37:A4:B2:10  
-          inet addr:192.168.1.150  Bcast:192.168.1.255  Mask:255.255.255.0
-          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
-          RX packets:14201 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:9820 errors:0 dropped:0 overruns:0 carrier:0
-
-wlan0     Link encap:Ethernet  HWaddr 00:13:37:A4:B2:11  
-          inet addr:172.16.42.1  Bcast:172.16.42.255  Mask:255.255.255.0
-          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
-          RX packets:84310 errors:0 dropped:0 overruns:0 frame:0
-          TX packets:71290 errors:0 dropped:0 overruns:0 carrier:0
-
-wlan1mon  Link encap:Ethernet  HWaddr 00:13:37:A4:B2:12  
-          UNSPEC  MTU:1500  Metric:1
-          UP BROADCAST RUNNING MONITOR  MTU:1500  Metric:1
-          RX packets:104922 errors:0 dropped:12 overruns:0 frame:0
-          TX packets:4012 errors:0 dropped:0 overruns:0 carrier:0
-
-lo        Link encap:Local Loopback  
-          inet addr:127.0.0.1  Mask:255.0.0.0
-          UP LOOPBACK RUNNING  MTU:65536  Metric:1`,
+      stdout: simulatedIfconfig(),
       stderr: '',
       exitCode: 0,
     };
@@ -266,7 +339,12 @@ wireless.default_radio0.ssid='WiFi_Pineapple_B210'`,
 }
 
 // Function to run SSH command
-function runSSHCommand(config: SSHConfigBody, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+function runSSHCommand(
+  config: SSHConfigBody,
+  command: string
+): Promise<{ stdout: string; stderr: string; exitCode: number; hostFingerprint?: string }> {
+  validateHardwareConfig(config);
+
   if (config.useSimulation) {
     return Promise.resolve(getSimulatedOutput(command));
   }
@@ -276,6 +354,8 @@ function runSSHCommand(config: SSHConfigBody, command: string): Promise<{ stdout
     let stdout = '';
     let stderr = '';
     let isSettled = false;
+    let observedFingerprint: string | undefined;
+    let hostMismatch = false;
 
     const timeoutLimit = config.timeoutMs ? Math.max(config.timeoutMs, 10000) : 30000;
     const timer = setTimeout(() => {
@@ -312,16 +392,16 @@ function runSSHCommand(config: SSHConfigBody, command: string): Promise<{ stdout
             try {
               conn.end();
             } catch (_) {}
-            resolve({ stdout, stderr, exitCode: code ?? 0 });
+            resolve({ stdout, stderr, exitCode: code ?? 0, hostFingerprint: observedFingerprint });
           }
         });
 
         stream.on('data', (data: Buffer) => {
-          stdout += data.toString('utf-8');
+          stdout = appendCapped(stdout, data.toString('utf-8'));
         });
 
         stream.stderr.on('data', (data: Buffer) => {
-          stderr += data.toString('utf-8');
+          stderr = appendCapped(stderr, data.toString('utf-8'));
         });
       });
     });
@@ -332,6 +412,10 @@ function runSSHCommand(config: SSHConfigBody, command: string): Promise<{ stdout
         try {
           conn.end();
         } catch (_) {}
+        if (hostMismatch) {
+          reject(new Error(`SSH host key for ${config.host}:${config.port || 22} does not match the saved pin. The connection was refused. Forget the trusted host key in Config if you replaced this device.`));
+          return;
+        }
         reject(err);
       }
     });
@@ -341,6 +425,15 @@ function runSSHCommand(config: SSHConfigBody, command: string): Promise<{ stdout
       port: config.port || 22,
       username: config.username || 'root',
       readyTimeout: config.timeoutMs || 8000,
+      hostHash: 'sha256',
+      hostVerifier: (fingerprint: string) => {
+        observedFingerprint = fingerprint;
+        if (config.hostFingerprint && !fingerprintsMatch(config.hostFingerprint, fingerprint)) {
+          hostMismatch = true;
+          return false;
+        }
+        return true;
+      },
     };
 
     if (config.authType === 'key' && config.privateKey) {
@@ -381,6 +474,7 @@ async function startApp() {
         success: true,
         durationMs,
         stdout: result.stdout,
+        hostFingerprint: result.hostFingerprint,
         message: config.useSimulation
           ? 'Connected to Simulated WiFi Pineapple Target.'
           : `SSH Connection to ${config.host}:${config.port} verified!`,
@@ -409,10 +503,11 @@ async function startApp() {
     try {
       let finalCommand = command;
       if (asScript) {
-        // Safe script execution via temporary payload file on device
-        const scriptName = filename || `payload_${Date.now()}.sh`;
+        const scriptName = safeScriptFilename(filename);
         const base64Content = Buffer.from(command).toString('base64');
-        finalCommand = `mkdir -p /tmp/payloads && echo "${base64Content}" | base64 -d > /tmp/payloads/${scriptName} && chmod +x /tmp/payloads/${scriptName} && /tmp/payloads/${scriptName}`;
+        const remotePath = `/tmp/payloads/${scriptName}`;
+        const invoke = scriptName.endsWith('.py') ? `python3 ${remotePath}` : remotePath;
+        finalCommand = `mkdir -p /tmp/payloads && printf '%s' '${base64Content}' | base64 -d > ${remotePath} && chmod +x ${remotePath} && ${invoke}`;
       }
 
       const result = await runSSHCommand(config, finalCommand);
@@ -424,6 +519,7 @@ async function startApp() {
         stderr: result.stderr,
         exitCode: result.exitCode,
         durationMs,
+        hostFingerprint: result.hostFingerprint,
       });
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
@@ -440,6 +536,7 @@ async function startApp() {
     const config: SSHConfigBody = req.body;
     try {
       const multiCmd = `
+        echo "===RELEASE==="; cat /etc/openwrt_release 2>/dev/null; uname -a;
         echo "===UPTIME==="; uptime;
         echo "===FREE==="; free -m 2>/dev/null || free;
         echo "===DF==="; df -h;
@@ -447,7 +544,7 @@ async function startApp() {
         echo "===PINEAP==="; pineap get_status 2>/dev/null || echo "PINEAP_NOT_FOUND";
       `;
       const result = await runSSHCommand(config, multiCmd);
-      res.json({ success: true, output: result.stdout });
+      res.json({ success: true, output: result.stdout, hostFingerprint: result.hostFingerprint });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -475,9 +572,9 @@ async function startApp() {
       const output = result.stdout || '';
 
       // Parse loadavg (e.g. 0.18 0.22 0.15 1/48 1824)
-      let load1 = 0.18;
-      let load5 = 0.22;
-      let load15 = 0.15;
+      let load1 = 0;
+      let load5 = 0;
+      let load15 = 0;
       const loadMatch = output.match(/([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)/);
       if (loadMatch) {
         load1 = parseFloat(loadMatch[1]);
@@ -485,17 +582,21 @@ async function startApp() {
         load15 = parseFloat(loadMatch[3]);
       }
 
-      // Parse memory
-      let memTotalMb = 256;
-      let memUsedMb = 118;
-      let memFreeMb = 138;
+      let memTotalMb = 0;
+      let memUsedMb = 0;
+      let memFreeMb = 0;
 
-      const freeSection = output.split('===MEM===')[1] || output;
-      const memLineMatch = freeSection.match(/Mem:\s+(\d+)\s+(\d+)\s+(\d+)/i) || freeSection.match(/(\d+)\s+(\d+)\s+(\d+)/);
+      const freeSection = output.split('===MEM===')[1]?.split('===STAT===')[0] || '';
+      const memLineMatch = freeSection.match(/Mem:\s+(\d+)\s+(\d+)\s+(\d+)/i);
       if (memLineMatch) {
-        memTotalMb = parseInt(memLineMatch[1], 10) || 256;
-        memUsedMb = parseInt(memLineMatch[2], 10) || 118;
-        memFreeMb = parseInt(memLineMatch[3], 10) || (memTotalMb - memUsedMb);
+        memTotalMb = parseInt(memLineMatch[1], 10) || 0;
+        memUsedMb = parseInt(memLineMatch[2], 10) || 0;
+        memFreeMb = parseInt(memLineMatch[3], 10) || Math.max(0, memTotalMb - memUsedMb);
+        if (memTotalMb > 8192) {
+          memTotalMb = Math.round(memTotalMb / 1024);
+          memUsedMb = Math.round(memUsedMb / 1024);
+          memFreeMb = Math.round(memFreeMb / 1024);
+        }
       } else {
         const totalK = freeSection.match(/MemTotal:\s+(\d+)\s+kB/i);
         const freeK = freeSection.match(/MemFree:\s+(\d+)\s+kB/i);
@@ -509,7 +610,13 @@ async function startApp() {
       }
 
       const memPercent = Math.min(100, Math.max(0, Math.round((memUsedMb / (memTotalMb || 1)) * 100)));
-      const cpuPercent = Math.min(100, Math.max(1, Math.round(load1 * 50 + (Math.random() * 4 - 2))));
+      const sampleKey = `${config.host || ''}:${config.port || 22}`;
+      const sample = parseProcStatCpu(output);
+      const previous = previousCpuSamples.get(sampleKey);
+      if (sample) previousCpuSamples.set(sampleKey, sample);
+      const measuredCpu = sample && previous ? cpuPercentBetween(previous, sample) : null;
+      // The first sample has no delta. Use load as a stand-in once, without random jitter.
+      const cpuPercent = measuredCpu ?? Math.min(100, Math.max(0, Math.round(Math.min(load1, 1) * 100)));
 
       const now = new Date();
       const timeLabel = now.toTimeString().split(' ')[0];
@@ -530,16 +637,14 @@ async function startApp() {
         },
         durationMs: Date.now() - startTime,
         mode: 'live',
+        hostFingerprint: result.hostFingerprint,
       });
     } catch (err: any) {
-      // Return simulated fallback with warning if SSH dropped temporarily
-      const fallback = getSimulatedTelemetryPoint();
-      res.json({
-        success: true,
-        metric: fallback,
+      res.status(502).json({
+        success: false,
         durationMs: Date.now() - startTime,
-        mode: 'fallback',
-        warning: err.message || 'SSH connection unavailable; utilizing cached telemetry stream',
+        mode: 'offline',
+        error: err.message || 'SSH connection unavailable',
       });
     }
   });
@@ -649,8 +754,18 @@ Please analyze this execution output and provide:
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`WiFi Pineapple SSH Controller running on http://0.0.0.0:${PORT}`);
+  app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && 'body' in err) {
+      res.status(400).json({ success: false, error: 'Request body is not valid JSON.' });
+      return;
+    }
+    next(err);
+  });
+
+  // Loopback only. HOST=0.0.0.0 exposes the unauthenticated SSH API on the network.
+  const HOST = process.env.HOST || '127.0.0.1';
+  app.listen(PORT, HOST, () => {
+    console.log(`WiFi Pineapple SSH Controller running on http://${HOST}:${PORT}`);
   });
 }
 

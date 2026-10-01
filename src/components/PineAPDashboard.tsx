@@ -1,5 +1,5 @@
 import React from 'react';
-import { PineappleStats, SSHConfig } from '../types';
+import { ExecutionLog, PineappleStats, SSHConfig } from '../types';
 import {
   Wifi,
   Cpu,
@@ -19,24 +19,36 @@ import { SystemMetricsWidget } from './SystemMetricsWidget';
 
 interface PineAPDashboardProps {
   stats: PineappleStats | null;
+  statsError?: string | null;
   config: SSHConfig;
   useSimulation?: boolean;
   onExecuteQuickCommand: (cmd: string) => void;
+  onRefreshStats: () => void;
   isExecuting: boolean;
+  isRefreshing?: boolean;
+  lastLog?: ExecutionLog | null;
   onOpenEditor: () => void;
   onOpenTerminal: () => void;
+  onHostFingerprint?: (fingerprint: string) => void;
 }
 
 export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
   stats,
+  statsError,
   config,
   useSimulation = false,
   onExecuteQuickCommand,
+  onRefreshStats,
   isExecuting,
+  isRefreshing = false,
+  lastLog,
   onOpenEditor,
   onOpenTerminal,
+  onHostFingerprint,
 }) => {
-  const connected = stats?.connected;
+  const pineap = stats?.pineapStatus;
+  const pineapKnown = Boolean(pineap?.known);
+  const pineapLabel = !pineapKnown ? 'NO STATUS' : pineap?.enabled ? 'PINEAP ACTIVE' : 'PINEAP STOPPED';
 
   return (
     <div className="space-y-6">
@@ -52,9 +64,9 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               </div>
               <div>
                 <h2 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-                  <span>{stats?.model || 'WiFi Pineapple Mark VII'}</span>
+                  <span>{stats?.model || 'No device snapshot'}</span>
                   <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-800 text-amber-300 rounded border border-slate-700">
-                    {stats?.firmwareVersion || 'Firmware v2.1.2'}
+                    {stats?.firmwareVersion || 'Firmware unread'}
                   </span>
                 </h2>
                 <p className="text-xs text-slate-400 font-mono">
@@ -91,7 +103,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
             </div>
             <div className="text-sm font-bold font-mono text-slate-100 mt-1">
-              {stats?.uptime || '4h 12m'}
+              {stats?.uptime || '—'}
             </div>
           </div>
 
@@ -101,7 +113,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               <Cpu className="w-3.5 h-3.5 text-amber-400" />
             </div>
             <div className="text-sm font-bold font-mono text-slate-100 mt-1">
-              {stats?.cpuLoad || '0.18 (Normal)'}
+              {stats?.cpuLoad || '—'}
             </div>
           </div>
 
@@ -111,7 +123,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               <Layers className="w-3.5 h-3.5 text-cyan-400" />
             </div>
             <div className="text-sm font-bold font-mono text-slate-100 mt-1">
-              {stats?.memoryUsage || '118MB / 256MB'}
+              {stats?.memoryUsage || '—'}
             </div>
           </div>
 
@@ -121,10 +133,19 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               <HardDrive className="w-3.5 h-3.5 text-violet-400" />
             </div>
             <div className="text-sm font-bold font-mono text-slate-100 mt-1">
-              {stats?.storageUsage || '27.7GB Free'}
+              {stats?.storageUsage || '—'}
             </div>
           </div>
         </div>
+        {!stats && (
+          <p className="text-xs text-slate-400 mt-4 relative z-10">
+            {statsError ||
+              (useSimulation
+                ? 'Reading the local simulator. These figures are not from a Pineapple.'
+                : 'No status has been read. Test the SSH connection, then refresh. Nothing here is live device data yet.')}
+          </p>
+        )}
+        {stats && statsError && <p className="text-xs text-rose-300 mt-4 relative z-10">{statsError}</p>}
       </div>
 
       {/* Dedicated D3 Real-Time CPU & Memory Telemetry Widget */}
@@ -132,6 +153,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
         config={config}
         useSimulation={useSimulation}
         onExecuteCommand={onExecuteQuickCommand}
+        onHostFingerprint={onHostFingerprint}
       />
 
       {/* PineAP Suite Controller & Wireless Interfaces Grid */}
@@ -151,12 +173,12 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
 
             <span
               className={`px-2.5 py-1 text-xs font-mono font-bold rounded-full border ${
-                stats?.pineapStatus.enabled
+                pineapKnown && pineap?.enabled
                   ? 'bg-emerald-950 text-emerald-400 border-emerald-800/80'
                   : 'bg-slate-800 text-slate-400 border-slate-700'
               }`}
             >
-              {stats?.pineapStatus.enabled ? 'PINEAP ACTIVE' : 'PINEAP STOPPED'}
+              {pineapLabel}
             </span>
           </div>
 
@@ -186,21 +208,25 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono">
               <span className="text-slate-400">Karma Engine:</span>
               <span className="text-amber-400 font-bold">
-                {stats?.pineapStatus.karma ? 'ENABLED' : 'DISABLED'}
+                {!pineapKnown ? 'UNKNOWN' : pineap?.karma ? 'ENABLED' : 'DISABLED'}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono">
               <span className="text-slate-400">AP Pool Broadcasting:</span>
               <span className="text-emerald-400 font-bold">
-                {stats?.pineapStatus.apPool ? 'ENABLED (42 SSIDs)' : 'DISABLED'}
+                {!pineapKnown
+                  ? 'UNKNOWN'
+                  : pineap?.apPool
+                    ? `ENABLED${pineap.activeSSIDs ? ` (${pineap.activeSSIDs} SSIDs)` : ''}`
+                    : 'DISABLED'}
               </span>
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono">
               <span className="text-slate-400">Recon Engine:</span>
               <span className="text-slate-200">
-                {stats?.pineapStatus.reconActive ? 'Scanning on wlan1mon' : 'Idle'}
+                {!pineapKnown ? 'Unknown' : pineap?.reconActive ? 'Scanning' : 'Idle'}
               </span>
             </div>
           </div>
@@ -220,21 +246,17 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
             </div>
 
             <button
-              onClick={() => onExecuteQuickCommand('ifconfig; iwconfig')}
-              disabled={isExecuting}
+              onClick={onRefreshStats}
+              disabled={isRefreshing}
               className="p-2 text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl transition-colors border border-slate-700"
-              title="Refresh interfaces"
+              title="Read interface status from the target"
             >
-              <RefreshCw className={`w-4 h-4 ${isExecuting ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
           <div className="space-y-3">
-            {(stats?.interfaces || [
-              { name: 'wlan0', type: 'Access Point', mac: '00:13:37:A4:B2:11', state: 'up', ip: '172.16.42.1' },
-              { name: 'wlan1mon', type: 'Monitor Mode', mac: '00:13:37:A4:B2:12', state: 'monitor' },
-              { name: 'wlan2', type: 'Out-of-Band Client', mac: '00:13:37:A4:B2:13', state: 'down' },
-            ]).map((iface) => (
+            {(stats?.interfaces.length ? stats.interfaces : []).map((iface) => (
               <div
                 key={iface.name}
                 className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs font-mono"
@@ -264,6 +286,9 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
                 </div>
               </div>
             ))}
+            {(!stats || stats.interfaces.length === 0) && (
+              <p className="text-xs text-slate-500 font-mono">No interfaces reported.</p>
+            )}
           </div>
 
           {/* Quick Interface Utilities */}
@@ -331,6 +356,11 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
             <div className="text-[10px] text-slate-500 mt-0.5">Check SD card space</div>
           </button>
         </div>
+        {lastLog && (
+          <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-40 overflow-auto whitespace-pre-wrap">
+            {`$ ${lastLog.command}\n${lastLog.stdout || ''}${lastLog.stderr ? `\n${lastLog.stderr}` : ''}\n[${lastLog.status} exit ${lastLog.exitCode ?? 'n/a'} ${lastLog.durationMs}ms]`}
+          </pre>
+        )}
       </div>
     </div>
   );

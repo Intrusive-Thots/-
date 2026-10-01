@@ -25,7 +25,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
 }) => {
-  const isConnected = stats?.connected;
+  const isConnected = Boolean(stats?.connected);
+  const linkLabel = useSimulation && isConnected ? 'SIMULATED' : isConnected ? 'SSH ONLINE' : 'OFFLINE';
+  const linkClass =
+    useSimulation && isConnected
+      ? 'bg-amber-950/60 border-amber-800/60 text-amber-300'
+      : isConnected
+        ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
+        : 'bg-rose-950/60 border-rose-800/60 text-rose-400';
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
@@ -123,15 +130,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Connection Status Pill */}
-            <div
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ${
-                isConnected
-                  ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
-                  : 'bg-rose-950/60 border-rose-800/60 text-rose-400'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-              <span className="font-semibold">{isConnected ? 'SSH ONLINE' : 'OFFLINE'}</span>
+            <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ${linkClass}`}>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  useSimulation && isConnected ? 'bg-amber-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                }`}
+              />
+              <span className="font-semibold">{linkLabel}</span>
             </div>
 
             {/* Refresh Stats Button */}

@@ -24,6 +24,7 @@ interface TerminalConsoleProps {
   isExecuting: boolean;
   onClearLogs: () => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onHostFingerprint?: (fingerprint: string) => void;
 }
 
 export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
@@ -35,6 +36,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
   isExecuting,
   onClearLogs,
   onAnalyzeLog,
+  onHostFingerprint,
 }) => {
   const [terminalMode, setTerminalMode] = useState<'cli' | 'queue'>('cli');
   const [inputCommand, setInputCommand] = useState('');
@@ -184,6 +186,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
               useSimulation={useSimulation}
               onAddExecutionLog={onAddExecutionLog}
               onAnalyzeLog={onAnalyzeLog}
+              onHostFingerprint={onHostFingerprint}
               onClose={() => setTerminalMode('cli')}
             />
           </div>

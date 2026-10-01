@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { SSHConfig, PineappleStats, ExecutionLog } from './types';
 import { Navbar } from './components/Navbar';
 import { ConnectionModal } from './components/ConnectionModal';
@@ -7,51 +7,44 @@ import { PayloadEditor } from './components/PayloadEditor';
 import { TerminalConsole } from './components/TerminalConsole';
 import { PayloadScheduler } from './components/PayloadScheduler';
 import { AiAssistantModal } from './components/AiAssistantModal';
+import { emptyDeviceStats, parseDeviceStatsOutput, parsePineApStatus } from './utils/deviceStats';
+import { forgetHostPin, readHostPin, writeHostPin } from './utils/hostPin';
+
+const DEFAULT_HOST = '172.16.42.1';
+const DEFAULT_PORT = 22;
+
+function pinConfig(cfg: SSHConfig, fingerprint?: string): SSHConfig {
+  if (!fingerprint || cfg.hostFingerprint) return cfg;
+  writeHostPin(cfg.host, cfg.port, fingerprint);
+  return { ...cfg, hostFingerprint: fingerprint };
+}
 
 export default function App() {
-  // SSH Config state
+  // SSH Config state. The host key pin is restored; the password is not.
   const [sshConfig, setSshConfig] = useState<SSHConfig>({
     id: 'pineapple_default',
     name: 'WiFi Pineapple Mark VII',
-    host: '172.16.42.1',
-    port: 22,
+    host: DEFAULT_HOST,
+    port: DEFAULT_PORT,
     username: 'root',
     authType: 'password',
     password: '',
     timeoutMs: 8000,
+    hostFingerprint: readHostPin(DEFAULT_HOST, DEFAULT_PORT),
   });
 
   const [useSimulation, setUseSimulation] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'ai'>('dashboard');
 
-  // Device Stats
-  const [stats, setStats] = useState<PineappleStats | null>({
-    connected: true,
-    model: 'WiFi Pineapple Mark VII',
-    firmwareVersion: 'v2.1.2 (Hak5 OS)',
-    uptime: '04:12:33 up 4h 12m',
-    cpuLoad: '0.18, 0.22, 0.15',
-    memoryUsage: '118MB / 256MB',
-    storageUsage: '27.7GB Free',
-    interfaces: [
-      { name: 'wlan0', type: 'Access Point', mac: '00:13:37:A4:B2:11', state: 'up', ip: '172.16.42.1' },
-      { name: 'wlan1mon', type: 'Monitor Mode', mac: '00:13:37:A4:B2:12', state: 'monitor' },
-      { name: 'wlan2', type: 'Out-of-Band Client', mac: '00:13:37:A4:B2:13', state: 'down' },
-    ],
-    pineapStatus: {
-      enabled: true,
-      apPool: true,
-      doghouse: false,
-      karma: true,
-      reconActive: false,
-      activeSSIDs: 42,
-    },
-  });
+  // Device stats stay empty until a status read succeeds.
+  const [stats, setStats] = useState<PineappleStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   // Logs & Execution
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
 
   // Modals
@@ -75,6 +68,62 @@ export default function App() {
     setLogs((prev) => [...prev, newLog]);
   };
 
+  const handleObservedFingerprint = useCallback((fingerprint: string) => {
+    setSshConfig((prev) => pinConfig(prev, fingerprint));
+  }, []);
+
+  const statsRequest = useRef(0);
+
+  const loadStats = useCallback(async (cfg: SSHConfig, simulation: boolean) => {
+    const requestId = ++statsRequest.current;
+    setIsRefreshing(true);
+    setStatsError(null);
+    try {
+      const res = await fetch('/api/ssh/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...cfg, useSimulation: simulation }),
+      });
+      const data = await res.json();
+      if (requestId !== statsRequest.current) return;
+      if (!res.ok || !data.success || typeof data.output !== 'string') {
+        setStats((prev) => (prev ? { ...prev, connected: false } : null));
+        setStatsError(data.error || 'Could not read device status.');
+        return;
+      }
+      const pinned = pinConfig(cfg, data.hostFingerprint);
+      if (pinned.hostFingerprint !== cfg.hostFingerprint) setSshConfig(pinned);
+      setStats({ ...parseDeviceStatsOutput(data.output), connected: true });
+    } catch (err: any) {
+      if (requestId !== statsRequest.current) return;
+      setStats((prev) => (prev ? { ...prev, connected: false } : null));
+      setStatsError(err.message || 'Status request failed.');
+    } finally {
+      if (requestId === statsRequest.current) setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!useSimulation) return;
+    void loadStats(sshConfig, true);
+    // Reload the emulator snapshot when the selected target changes. Hardware mode waits for an explicit test.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useSimulation, sshConfig.host, sshConfig.port, sshConfig.username]);
+
+  const handleToggleSimulation = (enabled: boolean) => {
+    statsRequest.current += 1;
+    setIsRefreshing(false);
+    setUseSimulation(enabled);
+    setStats(null);
+    setStatsError(null);
+    setTestResult(null);
+  };
+
+  const handleForgetHostPin = () => {
+    forgetHostPin(sshConfig.host, sshConfig.port);
+    setSshConfig((prev) => ({ ...prev, hostFingerprint: undefined }));
+  };
+
   // Test SSH Connection
   const handleTestConnection = async (cfgToTest: SSHConfig) => {
     setIsTesting(true);
@@ -89,36 +138,14 @@ export default function App() {
       const data = await res.json();
 
       if (data.success) {
+        const pinned = pinConfig(cfgToTest, data.hostFingerprint);
+        setSshConfig(pinned);
         setTestResult({
           success: true,
           message: data.message,
           durationMs: data.durationMs,
         });
-        setStats((prev) =>
-          prev
-            ? { ...prev, connected: true }
-            : {
-                connected: true,
-                model: 'WiFi Pineapple Mark VII',
-                firmwareVersion: 'v2.1.2',
-                uptime: 'Just connected',
-                cpuLoad: '0.12',
-                memoryUsage: '110MB / 256MB',
-                storageUsage: '27.7GB Free',
-                interfaces: [
-                  { name: 'wlan0', type: 'Access Point', mac: '00:13:37:A4:B2:11', state: 'up', ip: cfgToTest.host },
-                  { name: 'wlan1mon', type: 'Monitor Mode', mac: '00:13:37:A4:B2:12', state: 'monitor' },
-                ],
-                pineapStatus: {
-                  enabled: true,
-                  apPool: true,
-                  doghouse: false,
-                  karma: true,
-                  reconActive: false,
-                  activeSSIDs: 42,
-                },
-              }
-        );
+        await loadStats(pinned, useSimulation);
       } else {
         setTestResult({
           success: false,
@@ -155,6 +182,7 @@ export default function App() {
 
       const data = await res.json();
       const durationMs = Date.now() - startTime;
+      const succeeded = Boolean(data.success && data.exitCode === 0);
 
       const logItem: ExecutionLog = {
         id: `log_${Date.now()}`,
@@ -164,22 +192,23 @@ export default function App() {
         stderr: data.stderr || (data.error ? `Error: ${data.error}` : ''),
         exitCode: data.exitCode ?? (data.success ? 0 : 1),
         durationMs,
-        status: data.success && data.exitCode === 0 ? 'success' : 'failed',
+        status: succeeded ? 'success' : 'failed',
         host: sshConfig.host,
       };
 
       addLog(logItem);
 
-      // If PineAP command was toggled, update local PineAP stats state dynamically
-      if (command.includes('pineap')) {
-        if (command.includes('enable') || command.includes('start')) {
-          setStats((prev) =>
-            prev ? { ...prev, pineapStatus: { ...prev.pineapStatus, enabled: true } } : null
-          );
-        } else if (command.includes('disable') || command.includes('stop')) {
-          setStats((prev) =>
-            prev ? { ...prev, pineapStatus: { ...prev.pineapStatus, enabled: false } } : null
-          );
+      if (succeeded && data.hostFingerprint) {
+        setSshConfig((prev) => pinConfig(prev, data.hostFingerprint));
+      }
+
+      if (succeeded) {
+        const pineap = parsePineApStatus(`${data.stdout || ''}\n${data.stderr || ''}`);
+        if (pineap) {
+          setStats((prev) => {
+            const base = prev ?? emptyDeviceStats(true);
+            return { ...base, connected: true, pineapStatus: pineap };
+          });
         }
       }
     } catch (err: any) {
@@ -220,6 +249,9 @@ export default function App() {
 
       const data = await res.json();
       const durationMs = Date.now() - startTime;
+      if (data.hostFingerprint) {
+        setSshConfig((prev) => pinConfig(prev, data.hostFingerprint));
+      }
 
       const logItem: ExecutionLog = {
         id: `log_${Date.now()}`,
@@ -253,25 +285,7 @@ export default function App() {
     }
   };
 
-  // Refresh Stats
-  const handleRefreshStats = async () => {
-    setIsTesting(true);
-    try {
-      const res = await fetch('/api/ssh/stats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...sshConfig, useSimulation }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStats((prev) => (prev ? { ...prev, connected: true } : prev));
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsTesting(false);
-    }
-  };
+  const handleRefreshStats = () => loadStats(sshConfig, useSimulation);
 
   // AI Script Generator Call
   const handleGenerateScriptApi = async (goal: string, language: 'bash' | 'python') => {
@@ -323,9 +337,9 @@ export default function App() {
       <Navbar
         config={sshConfig}
         useSimulation={useSimulation}
-        onToggleSimulation={setUseSimulation}
+        onToggleSimulation={handleToggleSimulation}
         stats={stats}
-        isTesting={isTesting}
+        isTesting={isTesting || isRefreshing}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onRefreshStats={handleRefreshStats}
         activeTab={activeTab}
@@ -337,12 +351,17 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <PineAPDashboard
             stats={stats}
+            statsError={statsError}
             config={sshConfig}
             useSimulation={useSimulation}
             onExecuteQuickCommand={handleExecuteCommand}
+            onRefreshStats={handleRefreshStats}
             isExecuting={isExecuting}
+            isRefreshing={isRefreshing}
+            lastLog={logs.length > 0 ? logs[logs.length - 1] : null}
             onOpenEditor={() => setActiveTab('editor')}
             onOpenTerminal={() => setActiveTab('terminal')}
+            onHostFingerprint={handleObservedFingerprint}
           />
         )}
 
@@ -372,6 +391,7 @@ export default function App() {
             isExecuting={isExecuting}
             onClearLogs={() => setLogs([])}
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
+            onHostFingerprint={handleObservedFingerprint}
           />
         )}
 
@@ -383,6 +403,7 @@ export default function App() {
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
             initialJobToCreate={initialScheduledJob}
             onClearInitialJob={() => setInitialScheduledJob(null)}
+            onHostFingerprint={handleObservedFingerprint}
           />
         )}
       </main>
@@ -397,7 +418,8 @@ export default function App() {
         isTesting={isTesting}
         testResult={testResult}
         useSimulation={useSimulation}
-        onToggleSimulation={setUseSimulation}
+        onToggleSimulation={handleToggleSimulation}
+        onForgetHostPin={handleForgetHostPin}
       />
 
       {/* Gemini AI Assistant Modal */}

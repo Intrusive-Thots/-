@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { SSHConfig } from '../types';
-import { Key, Lock, Server, CheckCircle2, AlertCircle, RefreshCw, X, HelpCircle, Shield, Wifi } from 'lucide-react';
+import { Lock, Server, CheckCircle2, AlertCircle, RefreshCw, X, Shield } from 'lucide-react';
+import { readHostPin } from '../utils/hostPin';
 
 interface ConnectionModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ConnectionModalProps {
   testResult: { success?: boolean; message?: string; error?: string; durationMs?: number } | null;
   useSimulation: boolean;
   onToggleSimulation: (val: boolean) => void;
+  onForgetHostPin: () => void;
 }
 
 export const ConnectionModal: React.FC<ConnectionModalProps> = ({
@@ -24,9 +26,28 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   testResult,
   useSimulation,
   onToggleSimulation,
+  onForgetHostPin,
 }) => {
   const [formData, setFormData] = useState<SSHConfig>(config);
   const [showKeyInput, setShowKeyInput] = useState(config.authType === 'key');
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (isOpen && !wasOpen.current) {
+      setFormData(config);
+      setShowKeyInput(config.authType === 'key');
+    }
+    wasOpen.current = isOpen;
+  }, [isOpen, config]);
+
+  useEffect(() => {
+    if (!isOpen || !config.hostFingerprint) return;
+    setFormData((prev) => {
+      if (prev.host !== config.host || prev.port !== config.port) return prev;
+      if (prev.hostFingerprint === config.hostFingerprint) return prev;
+      return { ...prev, hostFingerprint: config.hostFingerprint };
+    });
+  }, [config.host, config.port, config.hostFingerprint, isOpen]);
 
   if (!isOpen) return null;
 
@@ -74,7 +95,14 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               <input
                 type="text"
                 value={formData.host}
-                onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                onChange={(e) => {
+                  const host = e.target.value;
+                  setFormData({
+                    ...formData,
+                    host,
+                    hostFingerprint: readHostPin(host, formData.port),
+                  });
+                }}
                 placeholder="172.16.42.1"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-amber-500 transition-colors"
                 required
@@ -86,7 +114,15 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               <input
                 type="number"
                 value={formData.port}
-                onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 22 })}
+                onChange={(e) => {
+                  const port = parseInt(e.target.value, 10);
+                  const nextPort = Number.isInteger(port) ? port : 22;
+                  setFormData({
+                    ...formData,
+                    port: nextPort,
+                    hostFingerprint: readHostPin(formData.host, nextPort),
+                  });
+                }}
                 placeholder="22"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-amber-500 transition-colors"
                 required
@@ -171,6 +207,28 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           )}
 
+          {formData.hostFingerprint && (
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-slate-300">Trusted SSH host key (SHA-256)</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormData({ ...formData, hostFingerprint: undefined });
+                    if (formData.host === config.host && formData.port === config.port) onForgetHostPin();
+                  }}
+                  className="text-[11px] text-rose-300 hover:text-rose-200"
+                >
+                  Forget key
+                </button>
+              </div>
+              <p className="text-[11px] font-mono text-slate-400 break-all">{formData.hostFingerprint}</p>
+              <p className="text-[11px] text-slate-500">
+                A later connection to this host is refused if the key changes. Forget the pin after you reinstall the device.
+              </p>
+            </div>
+          )}
+
           {/* Mode Switcher Banner */}
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
             <div className="flex items-center justify-between">
@@ -220,7 +278,8 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
                   <AlertCircle className="w-4 h-4 text-rose-400" />
                 )}
                 <span>
-                  {testResult.success ? 'SSH Handshake Succeeded' : 'SSH Connection Failed'} ({testResult.durationMs}ms)
+                  {testResult.success ? 'SSH Handshake Succeeded' : 'SSH Connection Failed'}
+                  {typeof testResult.durationMs === 'number' ? ` (${testResult.durationMs}ms)` : ''}
                 </span>
               </div>
               <p className="text-[11px] opacity-90">{testResult.message || testResult.error}</p>

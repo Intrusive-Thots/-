@@ -50,6 +50,81 @@ export function intervalToCronExpression(minutes: number): string {
   return `0 0 */${days} * *`;
 }
 
+const CRON_TOKEN = String.raw`(?:\*|\*/[1-9]\d*|\d+(?:-\d+)?)`;
+const CRON_FIELD = new RegExp(`^${CRON_TOKEN}(?:,${CRON_TOKEN})*$`);
+
+/** Five-field cron using only numbers, *, lists, ranges, and step values. */
+export function isSafeCronExpression(expression: string): boolean {
+  const parts = expression.trim().split(/\s+/);
+  return parts.length === 5 && parts.every((part) => CRON_FIELD.test(part));
+}
+
+export function isSafeJobId(jobId: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(jobId);
+}
+
+function matchCronToken(field: string, value: number): boolean {
+  if (field === '*') return true;
+  return field.split(',').some((part) => {
+    if (part.startsWith('*/')) {
+      const step = parseInt(part.slice(2), 10);
+      return step > 0 && value % step === 0;
+    }
+    if (part.includes('-')) {
+      const [startRaw, endRaw] = part.split('-');
+      const start = parseInt(startRaw, 10);
+      const end = parseInt(endRaw, 10);
+      return Number.isFinite(start) && Number.isFinite(end) && value >= start && value <= end;
+    }
+    return parseInt(part, 10) === value;
+  });
+}
+
+function matchDayOfWeek(field: string, day: number): boolean {
+  if (matchCronToken(field, day)) return true;
+  return day === 0 && matchCronToken(field, 7);
+}
+
+function cronMatches(date: Date, parts: string[]): boolean {
+  if (!matchCronToken(parts[0], date.getMinutes())) return false;
+  if (!matchCronToken(parts[1], date.getHours())) return false;
+  if (!matchCronToken(parts[3], date.getMonth() + 1)) return false;
+
+  const dayRestricted = parts[2] !== '*';
+  const weekRestricted = parts[4] !== '*';
+  const dayMatches = matchCronToken(parts[2], date.getDate());
+  const weekMatches = matchDayOfWeek(parts[4], date.getDay());
+  if (dayRestricted && weekRestricted) return dayMatches || weekMatches;
+  if (dayRestricted) return dayMatches;
+  if (weekRestricted) return weekMatches;
+  return true;
+}
+
+function nextCronDate(expression: string, fromDate: Date): Date | null {
+  if (!isSafeCronExpression(expression)) return null;
+  const parts = expression.trim().split(/\s+/);
+  const cursor = new Date(fromDate.getTime());
+  cursor.setSeconds(0, 0);
+  cursor.setMinutes(cursor.getMinutes() + 1);
+  const limit = cursor.getTime() + 366 * 24 * 60 * 60 * 1000;
+  while (cursor.getTime() <= limit) {
+    if (cronMatches(cursor, parts)) return new Date(cursor.getTime());
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  return null;
+}
+
+export function toLocalDateInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function toLocalTimeInput(date: Date): string {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
 /**
  * Calculates the next run time for a job
  */
@@ -80,29 +155,7 @@ export function calculateNextRunTime(job: ScheduledPayloadJob, fromDate: Date = 
   }
 
   if (job.triggerType === 'cron') {
-    // Parse simple cron patterns
-    const expr = (job.cronExpression || '*/15 * * * *').trim();
-    const parts = expr.split(/\s+/);
-    if (parts.length >= 5) {
-      const minPart = parts[0];
-      if (minPart.startsWith('*/')) {
-        const step = parseInt(minPart.replace('*/', ''), 10) || 15;
-        const currentMin = fromDate.getMinutes();
-        const nextMin = Math.ceil((currentMin + 1) / step) * step;
-        const nextDate = new Date(fromDate);
-        nextDate.setSeconds(0);
-        nextDate.setMilliseconds(0);
-        if (nextMin >= 60) {
-          nextDate.setHours(nextDate.getHours() + 1);
-          nextDate.setMinutes(nextMin % 60);
-        } else {
-          nextDate.setMinutes(nextMin);
-        }
-        return nextDate;
-      }
-    }
-    // Fallback: 15 minutes from now
-    return new Date(fromDate.getTime() + 15 * 60 * 1000);
+    return nextCronDate(job.cronExpression || '', fromDate);
   }
 
   return null;
@@ -169,7 +222,7 @@ export function generateOpenWrtCronLine(job: ScheduledPayloadJob): string {
     }
   }
 
-  const slug = job.name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+  const slug = job.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'payload';
   const scriptPath = `/root/payloads/${slug}.sh`;
   const logPath = `/tmp/${slug}.log`;
 
@@ -179,8 +232,21 @@ export function generateOpenWrtCronLine(job: ScheduledPayloadJob): string {
 /**
  * Generates script deployment commands for OpenWrt hardware
  */
-export function generateHardwareDeployCommand(job: ScheduledPayloadJob): string {
-  const slug = job.name.toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 30);
+export function generateHardwareDeployCommand(job: ScheduledPayloadJob): string | null {
+  if (!isSafeJobId(job.id)) return null;
+  const cronSource =
+    job.triggerType === 'cron'
+      ? job.cronExpression || ''
+      : job.triggerType === 'interval'
+        ? intervalToCronExpression(job.intervalMinutes || 15)
+        : '';
+  if (job.triggerType !== 'once' && !isSafeCronExpression(cronSource)) return null;
+  if (job.triggerType === 'once') {
+    const onceLine = generateOpenWrtCronLine(job).split(/\s+/).slice(0, 5).join(' ');
+    if (!isSafeCronExpression(onceLine)) return null;
+  }
+
+  const slug = job.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'payload';
   const scriptPath = `/root/payloads/${slug}.sh`;
   const base64Code = btoa(unescape(encodeURIComponent(job.code)));
   const cronLine = generateOpenWrtCronLine(job);
@@ -203,7 +269,8 @@ export function generateHardwareDeployCommand(job: ScheduledPayloadJob): string 
 /**
  * Generates command to remove job from hardware OpenWrt crontab
  */
-export function generateHardwareRemoveCommand(jobId: string): string {
+export function generateHardwareRemoveCommand(jobId: string): string | null {
+  if (!isSafeJobId(jobId)) return null;
   return [
     `if [ -f /etc/crontabs/root ]; then`,
     `  grep -v "WIFIPINEAPPLE_JOB_${jobId}" /etc/crontabs/root > /tmp/crontab.tmp || true`,

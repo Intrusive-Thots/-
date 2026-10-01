@@ -49,6 +49,9 @@ import {
   generateOpenWrtCronLine,
   generateHardwareDeployCommand,
   generateHardwareRemoveCommand,
+  isSafeCronExpression,
+  toLocalDateInput,
+  toLocalTimeInput,
 } from '../utils/schedulerUtils';
 
 interface PayloadSchedulerProps {
@@ -62,6 +65,7 @@ interface PayloadSchedulerProps {
     language: 'bash' | 'python' | 'uci';
   } | null;
   onClearInitialJob?: () => void;
+  onHostFingerprint?: (fingerprint: string) => void;
 }
 
 export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
@@ -71,7 +75,11 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   onAnalyzeLog,
   initialJobToCreate,
   onClearInitialJob,
+  onHostFingerprint,
 }) => {
+  const noteHostFingerprint = (payload: { hostFingerprint?: string } | null | undefined) => {
+    if (payload?.hostFingerprint) onHostFingerprint?.(payload.hostFingerprint);
+  };
   // Load saved jobs from localStorage
   const [jobs, setJobs] = useState<ScheduledPayloadJob[]>(() => {
     try {
@@ -130,8 +138,8 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   }>(() => {
     const now = new Date();
     now.setMinutes(now.getMinutes() + 10);
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const dateStr = toLocalDateInput(now);
+    const timeStr = toLocalTimeInput(now);
     return {
       name: 'Custom Scheduled Task',
       description: 'Automated WiFi Pineapple task',
@@ -154,6 +162,8 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   const [isLoadingCrontab, setIsLoadingCrontab] = useState<boolean>(false);
   const [copiedCrontab, setCopiedCrontab] = useState<boolean>(false);
   const [deviceSyncFeedback, setDeviceSyncFeedback] = useState<string | null>(null);
+  const [scheduleFormError, setScheduleFormError] = useState<string | null>(null);
+  const unschedulableJobIds = useRef<Set<string>>(new Set());
 
   // Real-time tick timer for countdown and scheduler trigger
   const [tick, setTick] = useState<number>(0);
@@ -216,10 +226,12 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
       if (executingJobIds[job.id]) return; // already executing
 
       if (!job.nextRunAt) {
-        // compute next run if missing
+        if (unschedulableJobIds.current.has(job.id)) return;
         const next = calculateNextRunTime(job);
         if (next) {
           updateJobNextRun(job.id, next.toISOString());
+        } else {
+          unschedulableJobIds.current.add(job.id);
         }
         return;
       }
@@ -235,6 +247,31 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   const updateJobNextRun = (jobId: string, nextIso: string) => {
     setJobs((prev) =>
       prev.map((j) => (j.id === jobId ? { ...j, nextRunAt: nextIso } : j))
+    );
+  };
+
+  const recordScheduledAttempt = (
+    jobId: string,
+    executionRecord: ScheduledPayloadExecution,
+    isSuccess: boolean
+  ) => {
+    setJobs((prev) =>
+      prev.map((j) => {
+        if (j.id !== jobId) return j;
+        const finished: ScheduledPayloadJob = {
+          ...j,
+          runCount: j.runCount + 1,
+          lastRunAt: new Date().toISOString(),
+          lastStatus: isSuccess ? 'success' : 'failed',
+          history: [executionRecord, ...j.history].slice(0, 50),
+        };
+        if (j.triggerType === 'once') {
+          return { ...finished, enabled: false, nextRunAt: undefined };
+        }
+        const nextDate = calculateNextRunTime({ ...finished, enabled: true }, new Date());
+        if (!nextDate) unschedulableJobIds.current.add(j.id);
+        return { ...finished, nextRunAt: nextDate ? nextDate.toISOString() : undefined };
+      })
     );
   };
 
@@ -263,8 +300,9 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
       });
 
       const data = await res.json();
+      noteHostFingerprint(data);
       const durationMs = Date.now() - startTime;
-      const isSuccess = Boolean(data.success && (data.exitCode === 0 || data.exitCode === null));
+      const isSuccess = Boolean(res.ok && data.success && data.exitCode === 0);
 
       const executionRecord: ScheduledPayloadExecution = {
         id: `exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -290,36 +328,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         host: config.host,
       };
       onAddExecutionLog(terminalLog);
-
-      // Compute next run time
-      let nextRunIso: string | undefined = undefined;
-      let shouldKeepEnabled = job.enabled;
-
-      if (job.triggerType === 'once') {
-        shouldKeepEnabled = false; // completed one-time
-        nextRunIso = undefined;
-      } else {
-        const nextDate = calculateNextRunTime(
-          { ...job, lastRunAt: new Date().toISOString() },
-          new Date()
-        );
-        nextRunIso = nextDate ? nextDate.toISOString() : undefined;
-      }
-
-      setJobs((prev) =>
-        prev.map((j) => {
-          if (j.id !== job.id) return j;
-          return {
-            ...j,
-            enabled: shouldKeepEnabled,
-            runCount: j.runCount + 1,
-            lastRunAt: new Date().toISOString(),
-            nextRunAt: nextRunIso,
-            lastStatus: isSuccess ? 'success' : 'failed',
-            history: [executionRecord, ...j.history].slice(0, 50), // keep latest 50
-          };
-        })
-      );
+      recordScheduledAttempt(job.id, executionRecord, isSuccess);
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
       const executionRecord: ScheduledPayloadExecution = {
@@ -333,17 +342,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         triggerType: job.triggerType,
       };
 
-      setJobs((prev) =>
-        prev.map((j) => {
-          if (j.id !== job.id) return j;
-          return {
-            ...j,
-            lastRunAt: new Date().toISOString(),
-            lastStatus: 'failed',
-            history: [executionRecord, ...j.history].slice(0, 50),
-          };
-        })
-      );
+      recordScheduledAttempt(job.id, executionRecord, false);
     } finally {
       setExecutingJobIds((prev) => {
         const next = { ...prev };
@@ -361,8 +360,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         const newEnabled = !j.enabled;
         let nextRunAt = j.nextRunAt;
         if (newEnabled && !nextRunAt) {
+          unschedulableJobIds.current.delete(j.id);
           const calculated = calculateNextRunTime({ ...j, enabled: true });
           nextRunAt = calculated ? calculated.toISOString() : undefined;
+          if (!calculated) unschedulableJobIds.current.add(j.id);
         }
         return {
           ...j,
@@ -389,8 +390,12 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
   // Sync Job to Hardware OpenWrt Crontab
   const handleSyncToHardware = async (job: ScheduledPayloadJob) => {
-    setDeviceSyncFeedback(`Deploying payload and registering in OpenWrt crontab...`);
     const deployCmd = generateHardwareDeployCommand(job);
+    if (!deployCmd) {
+      setDeviceSyncFeedback('Schedule was not installed. The cron expression or job id contains characters the device crontab cannot safely store.');
+      return;
+    }
+    setDeviceSyncFeedback(`Deploying payload and registering in OpenWrt crontab...`);
 
     try {
       const res = await fetch('/api/ssh/exec', {
@@ -402,7 +407,8 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         }),
       });
       const data = await res.json();
-      if (data.success) {
+      noteHostFingerprint(data);
+      if (res.ok && data.success && data.exitCode === 0) {
         setJobs((prev) =>
           prev.map((j) =>
             j.id === job.id
@@ -427,8 +433,12 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   // Remove Job from Hardware OpenWrt Crontab
   const handleRemoveFromHardware = async (jobId: string) => {
     const removeCmd = generateHardwareRemoveCommand(jobId);
+    if (!removeCmd) {
+      setDeviceSyncFeedback('Could not remove that job id from the device crontab.');
+      return;
+    }
     try {
-      await fetch('/api/ssh/exec', {
+      const res = await fetch('/api/ssh/exec', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -436,6 +446,12 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
           command: removeCmd,
         }),
       });
+      const data = await res.json();
+      noteHostFingerprint(data);
+      if (!res.ok || !data.success || data.exitCode !== 0) {
+        setDeviceSyncFeedback(data.error || data.stderr || 'The device crontab was not updated.');
+        return;
+      }
       setJobs((prev) =>
         prev.map((j) =>
           j.id === jobId
@@ -461,6 +477,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         }),
       });
       const data = await res.json();
+      noteHostFingerprint(data);
       setHardwareCrontab(data.stdout || '# Empty crontab');
 
       // Check cron daemon status
@@ -473,6 +490,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         }),
       });
       const statusData = await statusRes.json();
+      noteHostFingerprint(statusData);
       setHardwareCronStatus(statusData.stdout || 'Status unknown');
     } catch (err: any) {
       setHardwareCrontab(`# Failed to fetch crontab: ${err.message}`);
@@ -494,6 +512,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         }),
       });
       const data = await res.json();
+      noteHostFingerprint(data);
       setHardwareCronStatus(data.stdout || 'Restarted');
       setDeviceSyncFeedback('Cron daemon enabled and restarted.');
       setTimeout(() => setDeviceSyncFeedback(null), 3500);
@@ -518,6 +537,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         }),
       });
       const data = await res.json();
+      noteHostFingerprint(data);
       setHardwareSyslog(data.stdout || 'No cron syslog available.');
     } catch (err: any) {
       setHardwareSyslog(`Error reading logs: ${err.message}`);
@@ -529,18 +549,23 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   // Create Job from Form
   const handleCreateJob = () => {
     if (!formData.name.trim() || !formData.code.trim()) return;
+    setScheduleFormError(null);
 
     let runAtIso: string | undefined = undefined;
     let cronExpr = formData.cronExpression;
 
+    if (formData.triggerType === 'cron' && !isSafeCronExpression(formData.cronExpression)) {
+      setScheduleFormError('Use five cron fields with only numbers, *, commas, ranges, or */step. Other expressions are not scheduled.');
+      return;
+    }
+
     if (formData.triggerType === 'once') {
-      try {
-        const d = new Date(`${formData.runAtDate}T${formData.runAtTime}`);
-        runAtIso = d.toISOString();
-      } catch {
-        const fallback = new Date(Date.now() + 10 * 60 * 1000);
-        runAtIso = fallback.toISOString();
+      const scheduledAt = new Date(`${formData.runAtDate}T${formData.runAtTime}`);
+      if (Number.isNaN(scheduledAt.getTime())) {
+        setScheduleFormError('Enter a valid local date and time for the one-time run.');
+        return;
       }
+      runAtIso = scheduledAt.toISOString();
     } else if (formData.triggerType === 'interval') {
       cronExpr = intervalToCronExpression(formData.intervalMinutes);
     }
@@ -564,6 +589,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
     };
 
     const nextDate = calculateNextRunTime(newJob);
+    if (!nextDate && formData.triggerType !== 'once') {
+      setScheduleFormError('That schedule has no upcoming run the in-app scheduler can calculate.');
+      return;
+    }
     if (nextDate) {
       newJob.nextRunAt = nextDate.toISOString();
     }
@@ -597,8 +626,8 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   // Quick Time Offset Shortcuts for 'once' mode
   const setQuickOffset = (minutes: number) => {
     const target = new Date(Date.now() + minutes * 60 * 1000);
-    const dateStr = target.toISOString().split('T')[0];
-    const timeStr = `${String(target.getHours()).padStart(2, '0')}:${String(target.getMinutes()).padStart(2, '0')}`;
+    const dateStr = toLocalDateInput(target);
+    const timeStr = toLocalTimeInput(target);
     setFormData((prev) => ({
       ...prev,
       runAtDate: dateStr,
@@ -1295,7 +1324,22 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                       className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 font-mono text-amber-300 text-xs"
                     />
                     <p className="text-[10px] text-slate-500 font-mono">
-                      Format: [minute] [hour] [day of month] [month] [day of week]
+                      Format: minute hour day month weekday. Supported tokens: numbers, *, lists, ranges, */step.
+                      {isSafeCronExpression(formData.cronExpression)
+                        ? ` Next run ${calculateNextRunTime({
+                            id: 'preview',
+                            name: 'preview',
+                            language: 'bash',
+                            code: 'true',
+                            triggerType: 'cron',
+                            cronExpression: formData.cronExpression,
+                            targetEngine: 'app',
+                            enabled: true,
+                            createdAt: '',
+                            runCount: 0,
+                            history: [],
+                          })?.toLocaleString() || 'is not within the next year'}.`
+                        : ' This expression will not be armed.'}
                     </p>
                   </div>
                 )}
@@ -1359,7 +1403,13 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end space-x-2 px-5 py-3 border-t border-slate-800 bg-slate-900/80">
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-slate-800 bg-slate-900/80">
+              {scheduleFormError ? (
+                <p className="text-[11px] text-rose-300">{scheduleFormError}</p>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center space-x-2">
               <button
                 type="button"
                 onClick={() => setIsNewJobModalOpen(false)}
@@ -1375,6 +1425,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
               >
                 Save & Arm Schedule
               </button>
+              </div>
             </div>
           </div>
         </div>

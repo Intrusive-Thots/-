@@ -22,6 +22,7 @@ interface SystemMetricsWidgetProps {
   config: SSHConfig;
   useSimulation: boolean;
   onExecuteCommand?: (cmd: string) => void;
+  onHostFingerprint?: (fingerprint: string) => void;
   className?: string;
 }
 
@@ -30,6 +31,7 @@ type MetricViewMode = 'all' | 'cpu' | 'memory';
 export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
   config,
   useSimulation,
+  onHostFingerprint,
   className = '',
 }) => {
   // Chart and Container refs
@@ -37,48 +39,22 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
-  // Widget States
-  const [metrics, setMetrics] = useState<SystemMetricPoint[]>(() => {
-    // Pre-populate with realistic initial baseline so the chart is immediately rich and readable
-    const initial: SystemMetricPoint[] = [];
-    const now = Date.now();
-    const count = 24;
-    let baseCpu = 22;
-    let baseMem = 118;
+  const inFlightRef = useRef(false);
+  const requestGen = useRef(0);
 
-    for (let i = count - 1; i >= 0; i--) {
-      const ts = now - i * 2000;
-      baseCpu = Math.max(8, Math.min(85, Math.round(baseCpu + (Math.random() - 0.48) * 6)));
-      baseMem = Math.max(95, Math.min(160, Math.round(baseMem + (Math.random() - 0.5) * 2)));
-      const memTotal = 256;
-      const memPercent = Math.round((baseMem / memTotal) * 100);
-      const timeLabel = new Date(ts).toTimeString().split(' ')[0];
-      const load1 = Number(((baseCpu / 100) * 0.85).toFixed(2));
-      const load5 = Number((load1 * 0.9 + 0.05).toFixed(2));
-
-      initial.push({
-        timestamp: ts,
-        timeLabel,
-        cpuPercent: baseCpu,
-        memPercent,
-        memUsedMb: baseMem,
-        memTotalMb: memTotal,
-        memFreeMb: memTotal - baseMem,
-        load1,
-        load5,
-        load15: 0.18,
-      });
-    }
-    return initial;
-  });
+  // Samples start empty so a hardware session is not mixed with invented history.
+  const [metrics, setMetrics] = useState<SystemMetricPoint[]>([]);
 
   const [isLive, setIsLive] = useState<boolean>(true);
   const [pollIntervalMs, setPollIntervalMs] = useState<number>(2000);
   const [viewMode, setViewMode] = useState<MetricViewMode>('all');
   const [maxHistoryPoints, setMaxHistoryPoints] = useState<number>(40);
-  const [latencyMs, setLatencyMs] = useState<number | null>(32);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
-  const [telemetryMode, setTelemetryMode] = useState<'live' | 'simulated' | 'fallback'>('simulated');
+  const [telemetryMode, setTelemetryMode] = useState<'live' | 'simulated' | 'fallback'>(
+    useSimulation ? 'simulated' : 'live'
+  );
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<SystemMetricPoint | null>(null);
   const [showThresholdNotice, setShowThresholdNotice] = useState<boolean>(false);
   const [containerDimensions, setContainerDimensions] = useState<{ width: number; height: number }>({
@@ -141,7 +117,9 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
 
   // Fetch telemetry metric from backend
   const fetchMetric = useCallback(async () => {
-    if (isPolling) return;
+    if (inFlightRef.current) return;
+    const generation = requestGen.current;
+    inFlightRef.current = true;
     setIsPolling(true);
     const start = performance.now();
 
@@ -153,31 +131,42 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
       });
 
       const data = await response.json();
+      if (generation !== requestGen.current) return;
+      if (data.hostFingerprint) onHostFingerprint?.(data.hostFingerprint);
       const elapsed = Math.round(performance.now() - start);
       setLatencyMs(elapsed);
 
-      if (data.success && data.metric) {
-        setTelemetryMode(data.mode || (useSimulation ? 'simulated' : 'live'));
-        setMetrics((prev) => {
-          const next = [...prev, data.metric];
-          if (next.length > maxHistoryPoints) {
-            return next.slice(next.length - maxHistoryPoints);
-          }
-          return next;
-        });
-
-        if (data.metric.cpuPercent >= 80 || data.metric.memPercent >= 85) {
-          setShowThresholdNotice(true);
-        } else {
-          setShowThresholdNotice(false);
-        }
+      if (!response.ok || !data.success || !data.metric || data.mode === 'fallback' || data.mode === 'offline') {
+        setTelemetryMode('fallback');
+        setLinkError(data.error || data.warning || 'Telemetry link is down. No new sample was recorded.');
+        return;
       }
-    } catch (err) {
-      console.warn('Telemetry poll request failed:', err);
+
+      setLinkError(null);
+      setTelemetryMode(data.mode === 'simulated' || useSimulation ? 'simulated' : 'live');
+      setMetrics((prev) => {
+        const next = [...prev, data.metric];
+        if (next.length > maxHistoryPoints) {
+          return next.slice(next.length - maxHistoryPoints);
+        }
+        return next;
+      });
+
+      if (data.metric.cpuPercent >= 80 || data.metric.memPercent >= 85) {
+        setShowThresholdNotice(true);
+      } else {
+        setShowThresholdNotice(false);
+      }
+    } catch (err: any) {
+      setTelemetryMode('fallback');
+      setLinkError(err?.message || 'Telemetry poll request failed.');
     } finally {
-      setIsPolling(false);
+      if (generation === requestGen.current) {
+        inFlightRef.current = false;
+        setIsPolling(false);
+      }
     }
-  }, [config, useSimulation, maxHistoryPoints, isPolling]);
+  }, [config, useSimulation, maxHistoryPoints, onHostFingerprint]);
 
   // ResizeObserver for responsive D3 canvas
   useEffect(() => {
@@ -199,12 +188,22 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    requestGen.current += 1;
+    inFlightRef.current = false;
+    setMetrics([]);
+    setLinkError(null);
+    setShowThresholdNotice(false);
+    setTelemetryMode(useSimulation ? 'simulated' : 'live');
+  }, [config.host, config.port, useSimulation]);
+
   // Polling loop
   useEffect(() => {
     if (!isLive) return;
 
+    void fetchMetric();
     const timer = setInterval(() => {
-      fetchMetric();
+      void fetchMetric();
     }, pollIntervalMs);
 
     return () => clearInterval(timer);
@@ -585,15 +584,22 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   SSH Live
                 </span>
-              ) : (
+              ) : telemetryMode === 'simulated' ? (
                 <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-800/80 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
                   Simulated Stream
                 </span>
+              ) : (
+                <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-rose-950/80 text-rose-300 border border-rose-800/80 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                  Link down
+                </span>
               )}
             </div>
             <p className="text-xs text-slate-400">
-              Real-time CPU and Memory usage statistics streamed from OpenWrt kernel
+              {useSimulation
+                ? 'Simulated CPU and memory samples. These numbers are not from a device.'
+                : 'CPU and memory samples read over SSH. A dropped link stops the chart instead of inventing points.'}
             </p>
           </div>
         </div>
@@ -753,17 +759,19 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
 
           <div className="mt-2 flex items-baseline justify-between">
             <div className="text-base font-bold font-mono text-slate-100 flex items-center gap-2">
-              <span className="text-amber-400">{currentMetric?.load1 ?? 0.18}</span>
+              <span className="text-amber-400">{currentMetric ? currentMetric.load1 : '—'}</span>
               <span className="text-slate-500">/</span>
-              <span className="text-slate-300">{currentMetric?.load5 ?? 0.22}</span>
+              <span className="text-slate-300">{currentMetric ? currentMetric.load5 : '—'}</span>
               <span className="text-slate-500">/</span>
-              <span className="text-slate-400">{currentMetric?.load15 ?? 0.15}</span>
+              <span className="text-slate-400">{currentMetric ? currentMetric.load15 : '—'}</span>
             </div>
           </div>
 
           <div className="text-[10px] font-mono text-slate-400 mt-2 flex items-center justify-between">
-            <span>Kernel: MIPS OpenWrt</span>
-            <span className="text-emerald-400">Nominal</span>
+            <span>{currentMetric ? '1 / 5 / 15 min' : 'No samples yet'}</span>
+            <span className={currentMetric && currentMetric.load1 >= 1 ? 'text-rose-400' : 'text-slate-400'}>
+              {currentMetric ? (currentMetric.load1 >= 1 ? 'High' : 'Low') : '—'}
+            </span>
           </div>
         </div>
 
@@ -781,11 +789,13 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
 
           <div className="mt-2 flex items-baseline justify-between">
             <div className="text-base font-bold font-mono text-slate-100 flex items-baseline gap-1">
-              <span>{currentMetric?.memUsedMb ?? 118}</span>
-              <span className="text-xs text-slate-400 font-normal">/ {currentMetric?.memTotalMb ?? 256} MB</span>
+              <span>{currentMetric ? currentMetric.memUsedMb : '—'}</span>
+              <span className="text-xs text-slate-400 font-normal">
+                {currentMetric ? `/ ${currentMetric.memTotalMb} MB` : ''}
+              </span>
             </div>
             <div className="text-[11px] font-mono text-slate-400">
-              Free: <span className="text-cyan-300">{currentMetric?.memFreeMb ?? 138}MB</span>
+              Free: <span className="text-cyan-300">{currentMetric ? `${currentMetric.memFreeMb}MB` : '—'}</span>
             </div>
           </div>
 
@@ -808,7 +818,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
               Telemetry Link
             </span>
             <span className="text-[10px] font-mono text-emerald-400 font-semibold">
-              {latencyMs ? `${latencyMs}ms` : 'Ready'}
+              {latencyMs !== null ? `${latencyMs}ms` : '—'}
             </span>
           </div>
 
@@ -829,6 +839,13 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
       </div>
 
       {/* Threshold Warning Banner if load is unusually high */}
+      {linkError && (
+        <div className="mb-3 px-3 py-2 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-center gap-2 text-xs font-mono text-rose-300">
+          <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+          <span>{linkError}</span>
+        </div>
+      )}
+
       {showThresholdNotice && (
         <div className="mb-3 px-3 py-2 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-center justify-between text-xs font-mono text-rose-300">
           <div className="flex items-center gap-2">
@@ -856,6 +873,11 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
             height={containerDimensions.height}
             className="w-full h-full block"
           />
+          {metrics.length < 2 && (
+            <div className="absolute inset-0 flex items-center justify-center text-xs font-mono text-slate-500">
+              Waiting for telemetry samples
+            </div>
+          )}
 
           {/* Interactive Inspection HUD Hover Overlay */}
           {hoveredPoint && (
