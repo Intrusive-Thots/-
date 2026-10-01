@@ -211,7 +211,11 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
 
   // D3 Chart Rendering Engine
   useEffect(() => {
-    if (!svgRef.current || metrics.length < 2) return;
+    if (!svgRef.current) return;
+    if (metrics.length < 2) {
+      d3.select(svgRef.current).selectAll('*').remove();
+      return;
+    }
 
     let rafId: number;
 
