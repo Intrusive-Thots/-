@@ -1,6 +1,8 @@
 node_modules/
 build/
 dist/
+*.jks
+*.keystore
 server.cjs
 server.cjs.map
 coverage/
