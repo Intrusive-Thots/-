@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { SSHConfig, PineappleStats, ExecutionLog } from './types';
 import { Navbar } from './components/Navbar';
 import { ConnectionModal } from './components/ConnectionModal';
@@ -33,7 +33,6 @@ export default function App() {
     hostFingerprint: readHostPin(DEFAULT_HOST, DEFAULT_PORT),
   });
 
-  const [useSimulation, setUseSimulation] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'ai'>('dashboard');
 
   // Device stats stay empty until a status read succeeds.
@@ -74,7 +73,7 @@ export default function App() {
 
   const statsRequest = useRef(0);
 
-  const loadStats = useCallback(async (cfg: SSHConfig, simulation: boolean) => {
+  const loadStats = useCallback(async (cfg: SSHConfig) => {
     const requestId = ++statsRequest.current;
     setIsRefreshing(true);
     setStatsError(null);
@@ -82,7 +81,7 @@ export default function App() {
       const res = await fetch('/api/ssh/stats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...cfg, useSimulation: simulation }),
+        body: JSON.stringify(cfg),
       });
       const data = await res.json();
       if (requestId !== statsRequest.current) return;
@@ -103,22 +102,6 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!useSimulation) return;
-    void loadStats(sshConfig, true);
-    // Reload the emulator snapshot when the selected target changes. Hardware mode waits for an explicit test.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [useSimulation, sshConfig.host, sshConfig.port, sshConfig.username]);
-
-  const handleToggleSimulation = (enabled: boolean) => {
-    statsRequest.current += 1;
-    setIsRefreshing(false);
-    setUseSimulation(enabled);
-    setStats(null);
-    setStatsError(null);
-    setTestResult(null);
-  };
-
   const handleForgetHostPin = () => {
     forgetHostPin(sshConfig.host, sshConfig.port);
     setSshConfig((prev) => ({ ...prev, hostFingerprint: undefined }));
@@ -133,7 +116,7 @@ export default function App() {
       const res = await fetch('/api/ssh/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...cfgToTest, useSimulation }),
+        body: JSON.stringify(cfgToTest),
       });
       const data = await res.json();
 
@@ -145,7 +128,7 @@ export default function App() {
           message: data.message,
           durationMs: data.durationMs,
         });
-        await loadStats(pinned, useSimulation);
+        await loadStats(pinned);
       } else {
         setTestResult({
           success: false,
@@ -175,7 +158,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...sshConfig, useSimulation },
+          config: sshConfig,
           command,
         }),
       });
@@ -240,7 +223,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...sshConfig, useSimulation },
+          config: sshConfig,
           command: code,
           asScript: true,
           filename: `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${language === 'python' ? 'py' : 'sh'}`,
@@ -285,7 +268,7 @@ export default function App() {
     }
   };
 
-  const handleRefreshStats = () => loadStats(sshConfig, useSimulation);
+  const handleRefreshStats = () => loadStats(sshConfig);
 
   // AI Script Generator Call
   const handleGenerateScriptApi = async (goal: string, language: 'bash' | 'python') => {
@@ -336,8 +319,6 @@ export default function App() {
       {/* Top Header Navbar */}
       <Navbar
         config={sshConfig}
-        useSimulation={useSimulation}
-        onToggleSimulation={handleToggleSimulation}
         stats={stats}
         isTesting={isTesting || isRefreshing}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -353,7 +334,6 @@ export default function App() {
             stats={stats}
             statsError={statsError}
             config={sshConfig}
-            useSimulation={useSimulation}
             onExecuteQuickCommand={handleExecuteCommand}
             onRefreshStats={handleRefreshStats}
             isExecuting={isExecuting}
@@ -384,7 +364,6 @@ export default function App() {
         {activeTab === 'terminal' && (
           <TerminalConsole
             config={sshConfig}
-            useSimulation={useSimulation}
             logs={logs}
             onExecuteCommand={handleExecuteCommand}
             onAddExecutionLog={addLog}
@@ -398,7 +377,6 @@ export default function App() {
         {activeTab === 'scheduler' && (
           <PayloadScheduler
             config={sshConfig}
-            useSimulation={useSimulation}
             onAddExecutionLog={addLog}
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
             initialJobToCreate={initialScheduledJob}
@@ -417,8 +395,6 @@ export default function App() {
         onTestConnection={handleTestConnection}
         isTesting={isTesting}
         testResult={testResult}
-        useSimulation={useSimulation}
-        onToggleSimulation={handleToggleSimulation}
         onForgetHostPin={handleForgetHostPin}
       />
 

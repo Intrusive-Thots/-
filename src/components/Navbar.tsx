@@ -4,8 +4,6 @@ import { Wifi, Terminal, Server, ShieldCheck, AlertTriangle, RefreshCw, Settings
 
 interface NavbarProps {
   config: SSHConfig;
-  useSimulation: boolean;
-  onToggleSimulation: (val: boolean) => void;
   stats: PineappleStats | null;
   isTesting: boolean;
   onOpenSettings: () => void;
@@ -16,8 +14,6 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   config,
-  useSimulation,
-  onToggleSimulation,
   stats,
   isTesting,
   onOpenSettings,
@@ -26,13 +22,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
 }) => {
   const isConnected = Boolean(stats?.connected);
-  const linkLabel = useSimulation && isConnected ? 'SIMULATED' : isConnected ? 'SSH ONLINE' : 'OFFLINE';
-  const linkClass =
-    useSimulation && isConnected
-      ? 'bg-amber-950/60 border-amber-800/60 text-amber-300'
-      : isConnected
-        ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
-        : 'bg-rose-950/60 border-rose-800/60 text-rose-400';
+  const linkLabel = isConnected ? 'SSH ONLINE' : 'OFFLINE';
+  const linkClass = isConnected
+    ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
+    : 'bg-rose-950/60 border-rose-800/60 text-rose-400';
 
   return (
     <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
@@ -109,33 +102,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Controls */}
           <div className="flex items-center space-x-3">
-            {/* Simulation Mode Switch */}
-            <div className="flex items-center space-x-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-              <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">
-                {useSimulation ? 'Simulated Target' : 'Hardware Target'}
-              </span>
-              <button
-                onClick={() => onToggleSimulation(!useSimulation)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  useSimulation ? 'bg-amber-500' : 'bg-slate-700'
-                }`}
-                title="Toggle SSH Simulation Mode (for offline or local preview)"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-slate-950 shadow ring-0 transition duration-200 ease-in-out ${
-                    useSimulation ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Connection Status Pill */}
             <div className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ${linkClass}`}>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  useSimulation && isConnected ? 'bg-amber-400' : isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                }`}
-              />
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
               <span className="font-semibold">{linkLabel}</span>
             </div>
 

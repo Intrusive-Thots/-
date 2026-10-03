@@ -56,7 +56,6 @@ import {
 
 interface PayloadSchedulerProps {
   config: SSHConfig;
-  useSimulation: boolean;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
   initialJobToCreate?: {
@@ -70,7 +69,6 @@ interface PayloadSchedulerProps {
 
 export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   config,
-  useSimulation,
   onAddExecutionLog,
   onAnalyzeLog,
   initialJobToCreate,
@@ -292,7 +290,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: job.code,
           asScript: true,
           filename: scriptFilename,
@@ -402,7 +400,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: deployCmd,
         }),
       });
@@ -442,7 +440,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: removeCmd,
         }),
       });
@@ -472,7 +470,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: 'crontab -l 2>/dev/null || cat /etc/crontabs/root 2>/dev/null || echo "# No crontabs configured"',
         }),
       });
@@ -485,7 +483,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: '/etc/init.d/cron status 2>/dev/null || ps | grep crond | grep -v grep || echo "Unknown"',
         }),
       });
@@ -507,7 +505,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: '/etc/init.d/cron enable && /etc/init.d/cron restart && /etc/init.d/cron status',
         }),
       });
@@ -532,7 +530,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          config: { ...config, useSimulation },
+          config,
           command: 'logread 2>/dev/null | grep -i cron | tail -n 25 || echo "No cron syslog entries found."',
         }),
       });

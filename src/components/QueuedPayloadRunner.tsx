@@ -30,7 +30,6 @@ import {
 
 interface QueuedPayloadRunnerProps {
   config: SSHConfig;
-  useSimulation: boolean;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
   onHostFingerprint?: (fingerprint: string) => void;
@@ -39,7 +38,6 @@ interface QueuedPayloadRunnerProps {
 
 export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
   config,
-  useSimulation,
   onAddExecutionLog,
   onAnalyzeLog,
   onHostFingerprint,
@@ -232,7 +230,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
 
     let output = `${divider}\n`;
     output += `WIFI PINEAPPLE BATCH PAYLOAD EXECUTION REPORT\n`;
-    output += `Target: ${config.username}@${config.host}:${config.port} (${useSimulation ? 'SIMULATION MODE' : 'HARDWARE'})\n`;
+    output += `Target: ${config.username}@${config.host}:${config.port}\n`;
     output += `Timestamp: ${dateStr}\n`;
     output += `Total Payloads in Queue: ${executedItems.length}\n`;
     output += `Overall Status: ${overallStatus.toUpperCase()}\n`;
@@ -346,7 +344,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            config: { ...config, useSimulation },
+            config,
             command: currentQueue[i].code,
             asScript: true,
             filename,

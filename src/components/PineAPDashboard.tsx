@@ -21,7 +21,6 @@ interface PineAPDashboardProps {
   stats: PineappleStats | null;
   statsError?: string | null;
   config: SSHConfig;
-  useSimulation?: boolean;
   onExecuteQuickCommand: (cmd: string) => void;
   onRefreshStats: () => void;
   isExecuting: boolean;
@@ -36,7 +35,6 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
   stats,
   statsError,
   config,
-  useSimulation = false,
   onExecuteQuickCommand,
   onRefreshStats,
   isExecuting,
@@ -140,9 +138,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
         {!stats && (
           <p className="text-xs text-slate-400 mt-4 relative z-10">
             {statsError ||
-              (useSimulation
-                ? 'Reading the local simulator. These figures are not from a Pineapple.'
-                : 'No status has been read. Test the SSH connection, then refresh. Nothing here is live device data yet.')}
+              'No status has been read. Test the SSH connection, then refresh. Nothing here is live device data yet.'}
           </p>
         )}
         {stats && statsError && <p className="text-xs text-rose-300 mt-4 relative z-10">{statsError}</p>}
@@ -151,7 +147,6 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
       {/* Dedicated D3 Real-Time CPU & Memory Telemetry Widget */}
       <SystemMetricsWidget
         config={config}
-        useSimulation={useSimulation}
         onExecuteCommand={onExecuteQuickCommand}
         onHostFingerprint={onHostFingerprint}
       />

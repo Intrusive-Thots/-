@@ -20,7 +20,6 @@ import {
 
 interface SystemMetricsWidgetProps {
   config: SSHConfig;
-  useSimulation: boolean;
   onExecuteCommand?: (cmd: string) => void;
   onHostFingerprint?: (fingerprint: string) => void;
   className?: string;
@@ -30,7 +29,6 @@ type MetricViewMode = 'all' | 'cpu' | 'memory';
 
 export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
   config,
-  useSimulation,
   onHostFingerprint,
   className = '',
 }) => {
@@ -51,9 +49,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
   const [maxHistoryPoints, setMaxHistoryPoints] = useState<number>(40);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [isPolling, setIsPolling] = useState<boolean>(false);
-  const [telemetryMode, setTelemetryMode] = useState<'live' | 'simulated' | 'fallback'>(
-    useSimulation ? 'simulated' : 'live'
-  );
+  const [telemetryMode, setTelemetryMode] = useState<'live' | 'down'>('down');
   const [linkError, setLinkError] = useState<string | null>(null);
   const [hoveredPoint, setHoveredPoint] = useState<SystemMetricPoint | null>(null);
   const [showThresholdNotice, setShowThresholdNotice] = useState<boolean>(false);
@@ -127,7 +123,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
       const response = await fetch('/api/ssh/system-metrics', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...config, useSimulation }),
+        body: JSON.stringify(config),
       });
 
       const data = await response.json();
@@ -136,14 +132,20 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
       const elapsed = Math.round(performance.now() - start);
       setLatencyMs(elapsed);
 
-      if (!response.ok || !data.success || !data.metric || data.mode === 'fallback' || data.mode === 'offline') {
-        setTelemetryMode('fallback');
+      if (response.ok && data.success && data.pending) {
+        setLinkError(null);
+        setTelemetryMode('live');
+        return;
+      }
+
+      if (!response.ok || !data.success || !data.metric || data.mode === 'offline') {
+        setTelemetryMode('down');
         setLinkError(data.error || data.warning || 'Telemetry link is down. No new sample was recorded.');
         return;
       }
 
       setLinkError(null);
-      setTelemetryMode(data.mode === 'simulated' || useSimulation ? 'simulated' : 'live');
+      setTelemetryMode('live');
       setMetrics((prev) => {
         const next = [...prev, data.metric];
         if (next.length > maxHistoryPoints) {
@@ -158,7 +160,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
         setShowThresholdNotice(false);
       }
     } catch (err: any) {
-      setTelemetryMode('fallback');
+      setTelemetryMode('down');
       setLinkError(err?.message || 'Telemetry poll request failed.');
     } finally {
       if (generation === requestGen.current) {
@@ -166,7 +168,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
         setIsPolling(false);
       }
     }
-  }, [config, useSimulation, maxHistoryPoints, onHostFingerprint]);
+  }, [config, maxHistoryPoints, onHostFingerprint]);
 
   // ResizeObserver for responsive D3 canvas
   useEffect(() => {
@@ -194,8 +196,8 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
     setMetrics([]);
     setLinkError(null);
     setShowThresholdNotice(false);
-    setTelemetryMode(useSimulation ? 'simulated' : 'live');
-  }, [config.host, config.port, useSimulation]);
+    setTelemetryMode('down');
+  }, [config.host, config.port]);
 
   // Polling loop
   useEffect(() => {
@@ -588,11 +590,6 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   SSH Live
                 </span>
-              ) : telemetryMode === 'simulated' ? (
-                <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-800/80 rounded-full flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  Simulated Stream
-                </span>
               ) : (
                 <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-rose-950/80 text-rose-300 border border-rose-800/80 rounded-full flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
@@ -601,9 +598,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
               )}
             </div>
             <p className="text-xs text-slate-400">
-              {useSimulation
-                ? 'Simulated CPU and memory samples. These numbers are not from a device.'
-                : 'CPU and memory samples read over SSH. A dropped link stops the chart instead of inventing points.'}
+              CPU and memory samples read over SSH. A dropped link stops the chart instead of inventing points.
             </p>
           </div>
         </div>

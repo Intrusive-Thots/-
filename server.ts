@@ -18,97 +18,11 @@ interface SSHConfigBody {
   privateKey?: string;
   passphrase?: string;
   timeoutMs?: number;
-  useSimulation?: boolean;
   hostFingerprint?: string;
 }
 
 const MAX_STREAM_CHARS = 200_000;
 const previousCpuSamples = new Map<string, CpuSample>();
-
-// Simulated data generator for offline/demo testing
-let simulatedCrontab = `# OpenWrt root crontab on WiFi Pineapple Mark VII
-# m h dom mon dow command
-*/30 * * * * /root/payloads/recon_sweep.sh >> /tmp/recon_sweep.log 2>&1 # WIFIPINEAPPLE_JOB_preset_recon
-`;
-
-let simCpuUsage = 24;
-let simMemUsedMb = 118;
-let simLoad1 = 0.22;
-let simLoad5 = 0.25;
-let simLoad15 = 0.19;
-let simulatedPineapEnabled = true;
-
-function simulatedIfconfig(): string {
-  return `eth0      Link encap:Ethernet  HWaddr 00:13:37:A4:B2:10  
-          inet addr:192.168.1.150  Bcast:192.168.1.255  Mask:255.255.255.0
-          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
-
-wlan0     Link encap:Ethernet  HWaddr 00:13:37:A4:B2:11  
-          inet addr:172.16.42.1  Bcast:172.16.42.255  Mask:255.255.255.0
-          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
-
-wlan1mon  Link encap:Ethernet  HWaddr 00:13:37:A4:B2:12  
-          UP BROADCAST RUNNING MONITOR  MTU:1500  Metric:1
-
-lo        Link encap:Local Loopback  
-          inet addr:127.0.0.1  Mask:255.0.0.0
-          UP LOOPBACK RUNNING  MTU:65536  Metric:1`;
-}
-
-function simulatedPineapReport(): string {
-  const enabled = simulatedPineapEnabled;
-  return `PineAP Status: ${enabled ? 'ACTIVE' : 'STOPPED'}
-SSID Pool: 42 SSIDs loaded
-Karma: ${enabled ? 'ENABLED' : 'DISABLED'}
-AP Pool: ${enabled ? 'ENABLED' : 'DISABLED'}
-Doghouse: DISABLED
-Recon Engine: IDLE`;
-}
-
-function simulatedStatsReport(): string {
-  const memFree = 256 - simMemUsedMb;
-  return `===RELEASE===
-DISTRIB_ID='OpenWrt'
-DISTRIB_RELEASE='21.02.3'
-DISTRIB_DESCRIPTION='WiFi Pineapple Mark VII Firmware v2.1.2 (Hak5 OS)'
-Linux WiFiPineapple 5.4.188
-===UPTIME===
-04:12:33 up 4:12, load average: ${simLoad1.toFixed(2)}, ${simLoad5.toFixed(2)}, ${simLoad15.toFixed(2)}
-===FREE===
-              total        used        free      shared  buff/cache   available
-Mem:            256         ${simMemUsedMb}          ${memFree}           4          40         ${memFree}
-===DF===
-Filesystem                Size      Used Available Use% Mounted on
-/dev/root                16.0M     12.4M      3.6M  78% /
-/dev/sda1                29.8G      2.1G     27.7G   7% /sd
-===IFCONFIG===
-${simulatedIfconfig()}
-===PINEAP===
-${simulatedPineapReport()}`;
-}
-
-function applySimulatedPineap(trimmed: string): { stdout: string; stderr: string; exitCode: number } {
-  const stop = /\b(disable|stop)\b/.test(trimmed);
-  const start = /\b(enable|start)\b/.test(trimmed);
-  if (stop && !start) simulatedPineapEnabled = false;
-  else if (start) simulatedPineapEnabled = true;
-  const status = simulatedPineapReport();
-  if (stop && !start) {
-    return {
-      stdout: `[-] PineAP suite stopped.\n[-] Broadcaster disabled.\n${status}`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-  if (start) {
-    return {
-      stdout: `[+] PineAP suite started successfully.\n[+] Beacon broadcaster active on 2.4GHz channel 6.\n${status}`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-  return { stdout: status, stderr: '', exitCode: 0 };
-}
 
 function safeScriptFilename(filename: unknown): string {
   const fallback = `payload_${Date.now()}.sh`;
@@ -133,7 +47,6 @@ function fingerprintsMatch(expected: string, actual: string): boolean {
 }
 
 function validateHardwareConfig(config: SSHConfigBody): void {
-  if (config.useSimulation) return;
   const host = (config.host || '').trim();
   if (!host) throw new Error('A target host is required.');
   const port = Number(config.port ?? 22);
@@ -143,211 +56,15 @@ function validateHardwareConfig(config: SSHConfigBody): void {
   if (config.authType === 'key') {
     if (!config.privateKey?.trim()) throw new Error('Private key authentication requires a private key.');
   } else if (!config.password) {
-    throw new Error('Hardware SSH requires a password. Turn on simulation to work without a device.');
+    throw new Error('SSH requires a password. Save one in Config before connecting.');
   }
 }
 
-function getSimulatedTelemetryPoint() {
-  // Drift CPU with smooth random walk clamped 6% - 92%
-  const deltaCpu = (Math.random() - 0.49) * 8;
-  simCpuUsage = Math.max(6, Math.min(92, Math.round(simCpuUsage + deltaCpu)));
-
-  // Drift RAM slowly around 118MB / 256MB
-  const deltaMem = (Math.random() - 0.5) * 3;
-  simMemUsedMb = Math.max(92, Math.min(180, Math.round(simMemUsedMb + deltaMem)));
-  const memTotalMb = 256;
-  const memPercent = Math.round((simMemUsedMb / memTotalMb) * 100);
-  const memFreeMb = memTotalMb - simMemUsedMb;
-
-  simLoad1 = Number(((simCpuUsage / 100) * 0.9 + (Math.random() * 0.08 - 0.04)).toFixed(2));
-  simLoad5 = Number((simLoad1 * 0.88 + 0.04).toFixed(2));
-  simLoad15 = 0.18;
-
-  const now = new Date();
-  const timeLabel = now.toTimeString().split(' ')[0];
-
-  return {
-    timestamp: Date.now(),
-    timeLabel,
-    cpuPercent: simCpuUsage,
-    memPercent,
-    memUsedMb: simMemUsedMb,
-    memTotalMb,
-    memFreeMb,
-    load1: simLoad1,
-    load5: simLoad5,
-    load15: simLoad15,
-  };
-}
-
-function getSimulatedOutput(command: string): { stdout: string; stderr: string; exitCode: number } {
-  const trimmed = command.trim();
-
-  if (trimmed.includes('===UPTIME===') || trimmed.includes('===RELEASE===') || trimmed.includes('===FREE===')) {
-    return { stdout: simulatedStatsReport(), stderr: '', exitCode: 0 };
-  }
-
-  // Crontab inspection & operations
-  if (trimmed === 'crontab -l' || trimmed.includes('cat /etc/crontabs/root')) {
-    return {
-      stdout: simulatedCrontab || '# No active crontabs for root\n',
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('/etc/init.d/cron')) {
-    if (trimmed.includes('status')) {
-      return {
-        stdout: `running\nPID: 1208 /usr/sbin/crond -c /etc/crontabs -l 5`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
-    if (trimmed.includes('restart') || trimmed.includes('start') || trimmed.includes('enable')) {
-      return {
-        stdout: `[+] Enabling and starting OpenWrt cron daemon...\n[+] crond service started (PID: 1244).`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
-  }
-
-  // Crontab update simulation
-  if (trimmed.includes('/etc/crontabs/root') || (trimmed.includes('crontab -') && !trimmed.includes('crontab -l'))) {
-    if (trimmed.includes('grep -v')) {
-      // simulate removing a line
-      const match = trimmed.match(/WIFIPINEAPPLE_JOB_([a-zA-Z0-9_-]+)/);
-      if (match) {
-        const jobId = match[1];
-        simulatedCrontab = simulatedCrontab
-          .split('\n')
-          .filter((line) => !line.includes(`WIFIPINEAPPLE_JOB_${jobId}`))
-          .join('\n');
-      }
-      return {
-        stdout: `[+] Crontab updated successfully.`,
-        stderr: '',
-        exitCode: 0,
-      };
-    }
-    
-    // Add job to crontab
-    const match = trimmed.match(/echo "([^"]+)" >> \/etc\/crontabs\/root/);
-    if (match) {
-      simulatedCrontab += `\n${match[1]}\n`;
-    }
-    return {
-      stdout: `[+] Job added to /etc/crontabs/root.\n[+] Cron daemon reloaded.`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('logread') && (trimmed.includes('cron') || trimmed.includes('CRON'))) {
-    return {
-      stdout: `[INFO] crond[1208]: (root) CMD (/root/payloads/recon_sweep.sh >> /tmp/recon_sweep.log 2>&1)
-[INFO] crond[1208]: (root) CMD (echo "[$(date)] WiFi Pineapple health check OK" >> /tmp/health.log)
-[INFO] crond[1208]: OpenWrt cron daemon active, polling every 60s`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('pineap')) {
-    return applySimulatedPineap(trimmed);
-  }
-
-  if (trimmed === 'ifconfig' || trimmed.includes('ifconfig')) {
-    return {
-      stdout: simulatedIfconfig(),
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('airmon-ng') || trimmed.includes('iwconfig') || trimmed.includes('iw dev')) {
-    return {
-      stdout: `PHY\tInterface\tDriver\t\tChipset
-phy0\twlan0\t\tath9k\t\tAtheros AR9271
-phy1\twlan1mon\tath9k_htc\tAtheros AR9271 (Monitor Mode Active)
-phy2\twlan2\t\trt2800usb\tRalink RT5370`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('uname') || trimmed.includes('uptime') || trimmed.includes('cat /etc/openwrt_release')) {
-    return {
-      stdout: `Linux WiFiPineapple 5.4.188 #0 SMP PREEMPT OpenWrt 21.02.3
-Uptime: 04:12:33 up 4 hours, 12 mins, load average: 0.18, 0.22, 0.15
-WiFi Pineapple Mark VII Firmware v2.1.2 (Hak5 OS)`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('free') || trimmed.includes('df -h')) {
-    return {
-      stdout: `Mem: 256MB Total, 118MB Used, 138MB Free, 12MB Buffers
-Swap: 512MB Total, 0MB Used, 512MB Free
-Filesystem                Size      Used Available Use% Mounted on
-/dev/root                16.0M     12.4M      3.6M  78% /
-/dev/sda1 (SD Card)      29.8G      2.1G     27.7G   7% /sd`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('logread') || trimmed.includes('dmesg')) {
-    return {
-      stdout: `[INFO] PineAP: Station 4A:32:9F:88:B1:12 connected to rogue AP 'Free_Guest_WiFi'
-[INFO] PineAP: Probe request received for 'Home_Network_5G' from 8C:85:90:12:34:56 (RSSI: -58dBm)
-[INFO] PineAP: Added 'Home_Network_5G' to target SSID pool
-[INFO] hostapd: wlan0: STA 4a:32:9f:88:b1:12 IEEE 802.11: associated
-[INFO] dnsmasq-dhcp[1420]: DHCPREQUEST(wlan0) 172.16.42.105 4a:32:9f:88:b1:12
-[INFO] dnsmasq-dhcp[1420]: DHCPACK(wlan0) 172.16.42.105 4a:32:9f:88:b1:12 android-smartphone`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  if (trimmed.includes('uci show')) {
-    return {
-      stdout: `wireless.radio0=wifi-device
-wireless.radio0.type='mac80211'
-wireless.radio0.channel='6'
-wireless.radio0.band='2g'
-wireless.radio0.htmode='HT20'
-wireless.radio0.disabled='0'
-wireless.default_radio0=wifi-iface
-wireless.default_radio0.device='radio0'
-wireless.default_radio0.network='lan'
-wireless.default_radio0.mode='ap'
-wireless.default_radio0.ssid='WiFi_Pineapple_B210'`,
-      stderr: '',
-      exitCode: 0,
-    };
-  }
-
-  // Generic custom script / python / bash output simulation
-  return {
-    stdout: `[+] Executing command on WiFi Pineapple: ${trimmed}\n[+] Output:\nCommand completed successfully on device target (Simulated mode).`,
-    stderr: '',
-    exitCode: 0,
-  };
-}
-
-// Function to run SSH command
 function runSSHCommand(
   config: SSHConfigBody,
   command: string
 ): Promise<{ stdout: string; stderr: string; exitCode: number; hostFingerprint?: string }> {
   validateHardwareConfig(config);
-
-  if (config.useSimulation) {
-    return Promise.resolve(getSimulatedOutput(command));
-  }
 
   return new Promise((resolve, reject) => {
     const conn = new SSHClient();
@@ -475,9 +192,7 @@ async function startApp() {
         durationMs,
         stdout: result.stdout,
         hostFingerprint: result.hostFingerprint,
-        message: config.useSimulation
-          ? 'Connected to Simulated WiFi Pineapple Target.'
-          : `SSH Connection to ${config.host}:${config.port} verified!`,
+        message: `SSH connection to ${config.host}:${config.port} verified.`,
       });
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
@@ -485,7 +200,7 @@ async function startApp() {
         success: false,
         durationMs,
         error: err.message || 'SSH Connection failed',
-        hint: 'If your WiFi Pineapple is on a local subnet (e.g. 172.16.42.1), enable Simulation Mode or verify network route/port forwarding.',
+        hint: 'Check that this Pineapple is reachable on the configured host and port, and that the password or key is correct.',
       });
     }
   });
@@ -555,17 +270,6 @@ async function startApp() {
     const config: SSHConfigBody = req.body;
     const startTime = Date.now();
 
-    if (config.useSimulation) {
-      const metric = getSimulatedTelemetryPoint();
-      res.json({
-        success: true,
-        metric,
-        durationMs: Date.now() - startTime,
-        mode: 'simulated',
-      });
-      return;
-    }
-
     try {
       const cmd = `cat /proc/loadavg 2>/dev/null || uptime; echo "===MEM==="; free -m 2>/dev/null || cat /proc/meminfo; echo "===STAT==="; head -n 1 /proc/stat 2>/dev/null || true`;
       const result = await runSSHCommand(config, cmd);
@@ -609,14 +313,47 @@ async function startApp() {
         }
       }
 
-      const memPercent = Math.min(100, Math.max(0, Math.round((memUsedMb / (memTotalMb || 1)) * 100)));
+      if (!loadMatch || memTotalMb <= 0) {
+        res.status(502).json({
+          success: false,
+          durationMs: Date.now() - startTime,
+          mode: 'offline',
+          error: !loadMatch
+            ? 'The device did not return a readable load average.'
+            : 'The device did not return a readable memory report.',
+          hostFingerprint: result.hostFingerprint,
+        });
+        return;
+      }
+
+      const memPercent = Math.min(100, Math.max(0, Math.round((memUsedMb / memTotalMb) * 100)));
       const sampleKey = `${config.host || ''}:${config.port || 22}`;
       const sample = parseProcStatCpu(output);
       const previous = previousCpuSamples.get(sampleKey);
-      if (sample) previousCpuSamples.set(sampleKey, sample);
-      const measuredCpu = sample && previous ? cpuPercentBetween(previous, sample) : null;
-      // The first sample has no delta. Use load as a stand-in once, without random jitter.
-      const cpuPercent = measuredCpu ?? Math.min(100, Math.max(0, Math.round(Math.min(load1, 1) * 100)));
+      if (!sample) {
+        res.status(502).json({
+          success: false,
+          durationMs: Date.now() - startTime,
+          mode: 'offline',
+          error: 'The device did not return a readable /proc/stat sample.',
+          hostFingerprint: result.hostFingerprint,
+        });
+        return;
+      }
+      previousCpuSamples.set(sampleKey, sample);
+      const measuredCpu = previous ? cpuPercentBetween(previous, sample) : null;
+
+      if (measuredCpu === null) {
+        res.json({
+          success: true,
+          metric: null,
+          pending: true,
+          durationMs: Date.now() - startTime,
+          mode: 'live',
+          hostFingerprint: result.hostFingerprint,
+        });
+        return;
+      }
 
       const now = new Date();
       const timeLabel = now.toTimeString().split(' ')[0];
@@ -626,7 +363,7 @@ async function startApp() {
         metric: {
           timestamp: Date.now(),
           timeLabel,
-          cpuPercent,
+          cpuPercent: measuredCpu,
           memPercent,
           memUsedMb,
           memTotalMb,

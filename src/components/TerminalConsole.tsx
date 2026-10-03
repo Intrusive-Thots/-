@@ -17,7 +17,6 @@ import { QueuedPayloadRunner } from './QueuedPayloadRunner';
 
 interface TerminalConsoleProps {
   config: SSHConfig;
-  useSimulation: boolean;
   logs: ExecutionLog[];
   onExecuteCommand: (cmd: string) => Promise<void>;
   onAddExecutionLog: (log: ExecutionLog) => void;
@@ -29,7 +28,6 @@ interface TerminalConsoleProps {
 
 export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
   config,
-  useSimulation,
   logs,
   onExecuteCommand,
   onAddExecutionLog,
@@ -183,7 +181,6 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
           <div className="flex-1 overflow-y-auto">
             <QueuedPayloadRunner
               config={config}
-              useSimulation={useSimulation}
               onAddExecutionLog={onAddExecutionLog}
               onAnalyzeLog={onAnalyzeLog}
               onHostFingerprint={onHostFingerprint}

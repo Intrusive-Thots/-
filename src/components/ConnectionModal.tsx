@@ -11,8 +11,6 @@ interface ConnectionModalProps {
   onTestConnection: (cfg: SSHConfig) => Promise<void>;
   isTesting: boolean;
   testResult: { success?: boolean; message?: string; error?: string; durationMs?: number } | null;
-  useSimulation: boolean;
-  onToggleSimulation: (val: boolean) => void;
   onForgetHostPin: () => void;
 }
 
@@ -24,8 +22,6 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
   onTestConnection,
   isTesting,
   testResult,
-  useSimulation,
-  onToggleSimulation,
   onForgetHostPin,
 }) => {
   const [formData, setFormData] = useState<SSHConfig>(config);
@@ -229,36 +225,13 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
             </div>
           )}
 
-          {/* Mode Switcher Banner */}
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Shield className="w-4 h-4 text-amber-400" />
-                <span className="text-xs font-bold text-slate-200">Execution Mode</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-slate-400 font-mono">
-                  {useSimulation ? 'Simulated Target (Offline)' : 'Hardware SSH Target'}
-                </span>
-                <input
-                  type="checkbox"
-                  checked={useSimulation}
-                  onChange={(e) => onToggleSimulation(e.target.checked)}
-                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
-                />
-              </div>
+          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+            <div className="flex items-center space-x-2">
+              <Shield className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-bold text-slate-200">SSH target</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              {useSimulation ? (
-                <span>
-                  <strong>Simulation Mode Enabled:</strong> Commands and PineAP status will run inside an interactive,
-                  realistic hardware emulator. Perfect for testing payloads, writing code, and demonstrating without live hardware connected.
-                </span>
-              ) : (
-                <span>
-                  <strong>Hardware Target Mode:</strong> Real SSH calls will be established directly to your WiFi Pineapple IP. Ensure your device is powered on, connected on port 22, and accessible from the server route.
-                </span>
-              )}
+              Commands and status reads go to this Pineapple over SSH. The dashboard stays empty until a connection succeeds.
             </p>
           </div>
 
