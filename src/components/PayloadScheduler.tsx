@@ -715,10 +715,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
       {/* Navigation Tabs */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setActiveTab('jobs')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 ${
+            className={`min-h-11 px-3.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1.5 ${
               activeTab === 'jobs'
                 ? 'bg-amber-500 text-slate-950 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
@@ -733,14 +733,14 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
               setActiveTab('hardware-crontab');
               handleFetchHardwareCrontab();
             }}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center space-x-1.5 ${
+            className={`min-h-11 px-3.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-1.5 ${
               activeTab === 'hardware-crontab'
                 ? 'bg-amber-500 text-slate-950 font-bold'
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
-            <span>WiFi Pineapple Crontab (/etc/crontabs/root)</span>
+            <span>Crontab</span>
           </button>
         </div>
       </div>
@@ -758,13 +758,13 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
               <div className="flex items-center justify-center space-x-3">
                 <button
                   onClick={() => setIsPresetModalOpen(true)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs font-semibold"
+                  className="min-h-11 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-sm font-semibold"
                 >
                   Load Presets
                 </button>
                 <button
                   onClick={() => setIsNewJobModalOpen(true)}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold"
+                  className="min-h-11 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-sm font-bold"
                 >
                   Create Schedule
                 </button>
@@ -889,7 +889,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         <button
                           onClick={() => executeScheduledJob(job)}
                           disabled={isExecuting}
-                          className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all disabled:opacity-50"
+                          className="min-h-11 px-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg text-sm font-semibold flex items-center space-x-1 transition-all disabled:opacity-50"
                           title="Execute now manually via SSH"
                         >
                           <Play className={`w-3 h-3 ${isExecuting ? 'animate-spin' : ''}`} />
@@ -899,7 +899,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         {/* View Code */}
                         <button
                           onClick={() => setViewingCodeJob(job)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors"
+                          className="min-h-11 min-w-11 inline-flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors"
                           title="Inspect payload code & cron line"
                         >
                           <FileCode className="w-3.5 h-3.5" />
@@ -908,7 +908,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         {/* View History */}
                         <button
                           onClick={() => setViewingHistoryJob(job)}
-                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors flex items-center space-x-1"
+                          className="min-h-11 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors flex items-center space-x-1"
                           title="View Execution History & Output"
                         >
                           <History className="w-3.5 h-3.5" />
@@ -921,7 +921,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         {job.hardwareSynced ? (
                           <button
                             onClick={() => handleRemoveFromHardware(job.id)}
-                            className="px-2 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40 rounded-lg text-[11px] font-mono flex items-center space-x-1 transition-colors"
+                            className="min-h-11 px-3 bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/40 rounded-lg text-xs font-mono flex items-center space-x-1 transition-colors"
                             title="Synced to WiFi Pineapple hardware. Click to remove from device."
                           >
                             <Cpu className="w-3 h-3" />
@@ -930,7 +930,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         ) : (
                           <button
                             onClick={() => handleSyncToHardware(job)}
-                            className="px-2 py-1 bg-slate-800 hover:bg-indigo-500/20 text-slate-400 hover:text-indigo-300 border border-slate-700 rounded-lg text-[11px] font-mono flex items-center space-x-1 transition-colors"
+                            className="min-h-11 px-3 bg-slate-800 hover:bg-indigo-500/20 text-slate-400 hover:text-indigo-300 border border-slate-700 rounded-lg text-xs font-mono flex items-center space-x-1 transition-colors"
                             title="Deploy to OpenWrt hardware crontab"
                           >
                             <Cpu className="w-3 h-3" />
@@ -1077,7 +1077,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g., Hourly Reconnaissance Sweep"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                    className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-base text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
@@ -1088,7 +1088,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     placeholder="Brief description of the automated objective"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                    className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-base text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
@@ -1121,7 +1121,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         }
                       }
                     }}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-base text-slate-200 focus:outline-none focus:border-amber-500"
                   >
                     <option value="custom">✏️ Custom Script / Quick Command</option>
                     <optgroup label="Built-in & Custom Payloads">
@@ -1138,7 +1138,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                     onChange={(e) =>
                       setFormData({ ...formData, language: e.target.value as 'bash' | 'python' | 'uci' })
                     }
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-3 text-base text-slate-200 focus:outline-none focus:border-amber-500"
                   >
                     <option value="bash">Bash / POSIX Shell (/bin/sh)</option>
                     <option value="python">Python 3 (/usr/bin/python3)</option>
@@ -1150,7 +1150,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                   value={formData.code}
                   onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                   rows={6}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs text-amber-300/90 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                  className="w-full min-h-32 bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-base text-amber-300/90 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
                   placeholder="#!/bin/sh&#10;# Script code to execute on schedule"
                 />
               </div>
@@ -1162,7 +1162,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, triggerType: 'interval' })}
-                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                    className={`min-h-11 p-3 rounded-xl border text-center text-xs transition-all ${
                       formData.triggerType === 'interval'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -1175,7 +1175,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, triggerType: 'once' })}
-                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                    className={`min-h-11 p-3 rounded-xl border text-center text-xs transition-all ${
                       formData.triggerType === 'once'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -1188,7 +1188,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, triggerType: 'cron' })}
-                    className={`p-2.5 rounded-xl border text-center transition-all ${
+                    className={`min-h-11 p-3 rounded-xl border text-center text-xs transition-all ${
                       formData.triggerType === 'cron'
                         ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
                         : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -1217,7 +1217,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                           key={mins}
                           type="button"
                           onClick={() => setFormData({ ...formData, intervalMinutes: mins })}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-colors ${
+                          className={`min-h-11 px-3 rounded-lg text-sm font-mono transition-colors ${
                             formData.intervalMinutes === mins
                               ? 'bg-amber-500 text-slate-950 font-bold'
                               : 'bg-slate-900 text-slate-300 hover:bg-slate-800'

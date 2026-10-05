@@ -16,6 +16,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { SystemMetricsWidget } from './SystemMetricsWidget';
+import { PINEAP_START_COMMAND, PINEAP_STOP_COMMAND, WIFI_RADIOS_COMMAND } from '../utils/sshCommands';
 
 interface PineAPDashboardProps {
   stats: PineappleStats | null;
@@ -51,7 +52,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
   return (
     <div className="space-y-6">
       {/* Top Banner / Hero status */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 shadow-xl relative overflow-hidden">
+      <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
@@ -75,17 +76,17 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           </div>
 
           {/* Quick Action Triggers */}
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
             <button
               onClick={onOpenEditor}
-              className="flex items-center space-x-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-lg"
+              className="flex items-center justify-center space-x-2 min-h-11 px-4 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm transition-all shadow-lg"
             >
               <Zap className="w-4 h-4" />
               <span>Payload Runner</span>
             </button>
             <button
               onClick={onOpenTerminal}
-              className="flex items-center space-x-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-xl text-xs border border-slate-700 transition-colors"
+              className="flex items-center justify-center space-x-2 min-h-11 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-xl text-sm border border-slate-700 transition-colors"
             >
               <Terminal className="w-4 h-4 text-amber-400" />
               <span>Live Terminal</span>
@@ -180,18 +181,18 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           {/* Quick PineAP Toggle Controls */}
           <div className="grid grid-cols-2 gap-3">
             <button
-              onClick={() => onExecuteQuickCommand('pineap enable && pineap start && pineap get_status')}
+              onClick={() => onExecuteQuickCommand(PINEAP_START_COMMAND)}
               disabled={isExecuting}
-              className="flex items-center justify-center space-x-2 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all"
+              className="flex items-center justify-center space-x-2 min-h-11 p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>Start PineAP Suite</span>
             </button>
 
             <button
-              onClick={() => onExecuteQuickCommand('pineap disable && pineap get_status')}
+              onClick={() => onExecuteQuickCommand(PINEAP_STOP_COMMAND)}
               disabled={isExecuting}
-              className="flex items-center justify-center space-x-2 p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold transition-all"
+              className="flex items-center justify-center space-x-2 min-h-11 p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-sm font-bold transition-all"
             >
               <Square className="w-4 h-4 fill-current" />
               <span>Stop PineAP Suite</span>
@@ -236,14 +237,14 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-100">Wireless Interfaces</h3>
-                <p className="text-xs text-slate-400 font-mono">wlan0 / wlan1mon / wlan2 status</p>
+                <p className="text-xs text-slate-400 font-mono">wlan0 / wlan1 from iw and ifconfig</p>
               </div>
             </div>
 
             <button
               onClick={onRefreshStats}
               disabled={isRefreshing}
-              className="p-2 text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl transition-colors border border-slate-700"
+              className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-400 hover:text-slate-200 bg-slate-800 rounded-xl transition-colors border border-slate-700"
               title="Read interface status from the target"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -287,21 +288,21 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           </div>
 
           {/* Quick Interface Utilities */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-col sm:flex-row gap-2 pt-1">
             <button
-              onClick={() => onExecuteQuickCommand('airmon-ng start wlan1 && ifconfig')}
+              onClick={() => onExecuteQuickCommand(WIFI_RADIOS_COMMAND)}
               disabled={isExecuting}
-              className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-mono border border-slate-700 transition-colors text-center"
+              className="flex-1 min-h-11 py-3 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-mono border border-slate-700 transition-colors text-center"
             >
-              Start Monitor Mode
+              List Radios
             </button>
 
             <button
-              onClick={() => onExecuteQuickCommand('ifconfig wlan1 down && macchanger -r wlan1 && ifconfig wlan1 up')}
+              onClick={() => onExecuteQuickCommand('ifconfig')}
               disabled={isExecuting}
-              className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-mono border border-slate-700 transition-colors text-center"
+              className="flex-1 min-h-11 py-3 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-sm font-mono border border-slate-700 transition-colors text-center"
             >
-              Randomize MAC
+              Show Addresses
             </button>
           </div>
         </div>
@@ -318,7 +319,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           <button
             onClick={() => onExecuteQuickCommand('uptime')}
             disabled={isExecuting}
-            className="p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
+            className="min-h-11 p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
           >
             <div className="font-bold text-amber-400">uptime</div>
             <div className="text-[10px] text-slate-500 mt-0.5">Check load & uptime</div>
@@ -327,7 +328,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           <button
             onClick={() => onExecuteQuickCommand('logread | tail -n 20')}
             disabled={isExecuting}
-            className="p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
+            className="min-h-11 p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
           >
             <div className="font-bold text-amber-400">logread | tail</div>
             <div className="text-[10px] text-slate-500 mt-0.5">Tail system log</div>
@@ -336,7 +337,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           <button
             onClick={() => onExecuteQuickCommand('uci show wireless')}
             disabled={isExecuting}
-            className="p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
+            className="min-h-11 p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
           >
             <div className="font-bold text-amber-400">uci show wireless</div>
             <div className="text-[10px] text-slate-500 mt-0.5">View OpenWrt Wi-Fi config</div>
@@ -345,7 +346,7 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           <button
             onClick={() => onExecuteQuickCommand('df -h')}
             disabled={isExecuting}
-            className="p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
+            className="min-h-11 p-3 bg-slate-950 hover:bg-slate-800/80 text-slate-300 rounded-xl border border-slate-800 font-mono text-left transition-colors"
           >
             <div className="font-bold text-amber-400">df -h</div>
             <div className="text-[10px] text-slate-500 mt-0.5">Check SD card space</div>

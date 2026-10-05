@@ -286,19 +286,20 @@ async function startApp() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
-      const prompt = `You are an expert wireless security researcher and Hak5 WiFi Pineapple specialist (Mark VII / TETRA / NANO OpenWrt OS).
-Write a production-ready, clean, safe, well-commented ${language || 'bash'} script for a WiFi Pineapple device to achieve the following objective:
+      const prompt = `You write operational admin scripts for a WiFi Pineapple the operator already owns (Mark VII or earlier OpenWrt).
+Write a clean, commented ${language === 'python' ? 'python3' : '/bin/sh'} script for this objective:
 
 Goal: "${goal}"
 
-Hardware context: WiFi Pineapple Mark VII / OpenWrt Linux system.
-Key CLI tools available: pineap, airmon-ng, airodump-ng, iw, ifconfig, uci, opkg, logread, python3.
+The login shell is BusyBox ash. Do not use bash, arrays, process substitution, base64, airmon-ng, macchanger, hexdump, grep -A, grep -P, or python3 unless the operator asked for Python.
+Prefer: pineap get_status (fall back to pineap /tmp/pineap.conf get_status), iw, iwinfo, ifconfig, uci show, logread, dmesg, df, free, uptime, ps.
+Do not add deauth, handshake capture, cracking, or evil-twin steps.
 
 Requirements:
 1. Provide ONLY executable code inside a markdown code block (\`\`\`bash or \`\`\`python).
-2. Include error checking (e.g. check if interfaces or commands exist).
-3. Add explanatory inline comments.
-4. Keep script safe, clean, and structured.`;
+2. Check that a command exists before calling it.
+3. Add short comments.
+4. Start shell scripts with #!/bin/sh.`;
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',

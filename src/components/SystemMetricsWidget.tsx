@@ -662,7 +662,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
           {/* Play / Pause Toggle */}
           <button
             onClick={() => setIsLive(!isLive)}
-            className={`p-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`min-h-11 px-3 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 ${
               isLive
                 ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                 : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30'
@@ -677,7 +677,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
           <button
             onClick={() => fetchMetric()}
             disabled={isPolling}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors"
             title="Poll now"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isPolling ? 'animate-spin text-amber-400' : ''}`} />
@@ -686,7 +686,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
           {/* Clear & Export buttons */}
           <button
             onClick={handleClearHistory}
-            className="p-2 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-xl border border-slate-800 transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded-xl border border-slate-800 transition-colors"
             title="Reset telemetry buffer"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -694,7 +694,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
 
           <button
             onClick={handleExportData}
-            className="p-2 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 rounded-xl border border-slate-800 transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-cyan-400 rounded-xl border border-slate-800 transition-colors"
             title="Export metrics JSON"
           >
             <Download className="w-3.5 h-3.5" />

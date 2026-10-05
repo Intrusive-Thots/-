@@ -1,4 +1,5 @@
 import { ScheduledPayloadJob } from '../types';
+import { printfWriteCommands } from './sshCommands';
 
 /**
  * Calculates human-readable description of a schedule
@@ -248,12 +249,11 @@ export function generateHardwareDeployCommand(job: ScheduledPayloadJob): string 
 
   const slug = job.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'payload';
   const scriptPath = `/root/payloads/${slug}.sh`;
-  const base64Code = btoa(unescape(encodeURIComponent(job.code)));
   const cronLine = generateOpenWrtCronLine(job);
 
   return [
     `mkdir -p /root/payloads`,
-    `echo "${base64Code}" | base64 -d > ${scriptPath}`,
+    ...printfWriteCommands(scriptPath, job.code),
     `chmod +x ${scriptPath}`,
     `mkdir -p /etc/crontabs`,
     `touch /etc/crontabs/root`,
