@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { QueuedPayloadRunner } from './QueuedPayloadRunner';
 import { PINEAP_STATUS_COMMAND } from '../utils/sshCommands';
+import { AiFixButton } from './AiFixButton';
 
 interface TerminalConsoleProps {
   config: SSHConfig;
@@ -24,6 +25,7 @@ interface TerminalConsoleProps {
   isExecuting: boolean;
   onClearLogs: () => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
   onHostFingerprint?: (fingerprint: string) => void;
 }
 
@@ -35,6 +37,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
   isExecuting,
   onClearLogs,
   onAnalyzeLog,
+  onAiFix,
   onHostFingerprint,
 }) => {
   const [terminalMode, setTerminalMode] = useState<'cli' | 'queue'>('cli');
@@ -103,12 +106,10 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
   const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
 
   return (
-    <div className="space-y-4">
-      {/* Terminal Container */}
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col h-[70vh] min-h-[420px]">
-        {/* Terminal Header */}
-        <div className="flex flex-wrap items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 text-xs font-mono gap-2">
-          <div className="flex items-center space-x-3">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col flex-1 min-h-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-900 border-b border-slate-800 text-xs font-mono shrink-0">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
             <div className="flex space-x-1.5">
               <span className="w-3 h-3 rounded-full bg-rose-500/80 inline-block" />
               <span className="w-3 h-3 rounded-full bg-amber-500/80 inline-block" />
@@ -120,39 +121,42 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
               <button
                 type="button"
                 onClick={() => setTerminalMode('cli')}
-                className={`min-h-11 px-3 rounded text-xs font-mono transition-colors flex items-center space-x-1.5 ${
+                className={`min-h-11 px-3 rounded text-xs font-mono transition-colors flex items-center gap-1.5 ${
                   terminalMode === 'cli'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Terminal className="w-3.5 h-3.5" />
-                <span>CLI Terminal</span>
+                <span>CLI</span>
               </button>
               <button
                 type="button"
                 onClick={() => setTerminalMode('queue')}
-                className={`min-h-11 px-3 rounded text-xs font-mono transition-colors flex items-center space-x-1.5 ${
+                className={`min-h-11 px-3 rounded text-xs font-mono transition-colors flex items-center gap-1.5 ${
                   terminalMode === 'queue'
                     ? 'bg-amber-500 text-slate-950 font-bold shadow'
                     : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <ListOrdered className="w-3.5 h-3.5" />
-                <span>Queued Sequence Runner</span>
+                <span>Queue</span>
               </button>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {lastLog && terminalMode === 'cli' && lastLog.status === 'failed' && onAiFix && (
+              <AiFixButton onClick={() => onAiFix(lastLog)} />
+            )}
             {lastLog && terminalMode === 'cli' && (
               <button
                 onClick={() => onAnalyzeLog(lastLog)}
-                className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-lg text-[11px] border border-amber-500/30 transition-colors flex items-center space-x-1"
-                title="Analyze last output with Gemini AI"
+                className="min-h-11 px-3 bg-slate-800 text-amber-200 rounded-lg text-xs border border-slate-700 inline-flex items-center gap-1"
+                title="Analyze last output"
               >
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                <span>AI Analyze Last Command</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Analyze</span>
               </button>
             )}
 
@@ -160,7 +164,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
               <>
                 <button
                   onClick={handleCopyLogs}
-                  className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg"
                   title="Copy Terminal Logs"
                 >
                   {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
@@ -168,7 +172,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
 
                 <button
                   onClick={onClearLogs}
-                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                  className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg"
                   title="Clear Terminal Output"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -184,6 +188,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
               config={config}
               onAddExecutionLog={onAddExecutionLog}
               onAnalyzeLog={onAnalyzeLog}
+              onAiFix={onAiFix}
               onHostFingerprint={onHostFingerprint}
               onClose={() => setTerminalMode('cli')}
             />
@@ -191,7 +196,7 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
         ) : (
           <>
             {/* Quick Command Bar */}
-            <div className="px-3 py-2 bg-slate-900/60 border-b border-slate-800/80 flex flex-wrap items-center gap-2 text-[11px] font-mono">
+            <div className="px-3 py-2 bg-slate-900/60 border-b border-slate-800/80 flex flex-wrap items-center gap-2 text-[11px] font-mono shrink-0">
               <span className="text-slate-500 uppercase font-bold text-[10px] shrink-0">Quick:</span>
               <button
                 onClick={() => setTerminalMode('queue')}
@@ -230,15 +235,18 @@ export const TerminalConsole: React.FC<TerminalConsoleProps> = ({
                   return (
                     <div key={log.id} className="space-y-1">
                       {/* Prompt command line */}
-                      <div className="flex items-center space-x-2 text-slate-300 font-bold">
-                        <span className="text-amber-400 font-mono">root@pineapple:~#</span>
+                      <div className="flex flex-wrap items-start gap-x-2 gap-y-1 text-slate-300 font-bold">
+                        <span className="text-amber-400 font-mono shrink-0">root@pineapple:~#</span>
                         {isBatchSequence ? (
                           <span className="px-1.5 py-0.2 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px]">
                             BATCH SEQUENCE
                           </span>
                         ) : null}
-                        <span className="text-slate-100">{log.command}</span>
-                        <span className="text-[10px] text-slate-600 ml-auto font-normal">[{log.durationMs}ms]</span>
+                        <span className="text-slate-100 break-all min-w-0">{log.command}</span>
+                        <span className="text-[10px] text-slate-600 font-normal">[{log.durationMs}ms]</span>
+                        {log.status === 'failed' && onAiFix && (
+                          <AiFixButton onClick={() => onAiFix(log)} />
+                        )}
                       </div>
 
                       {/* STDOUT */}

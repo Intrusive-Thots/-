@@ -162,7 +162,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by title, description, notes..."
-          className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-8 py-3 text-base text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500 transition-colors"
+          className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-12 py-3 text-base text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500 transition-colors"
         />
         {searchTerm && (
           <button
@@ -175,7 +175,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
       </div>
 
       {/* Category Filter Pills */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-xs font-mono">
+      <div className="flex flex-wrap items-center gap-1 text-xs font-mono">
         {CATEGORY_TABS.map((tab) => {
           const isActive = categoryFilter === tab.id;
           return (

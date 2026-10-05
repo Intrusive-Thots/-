@@ -24,6 +24,7 @@ import {
   Info,
 } from 'lucide-react';
 import { parseDocBlockFromCode } from '../utils/payloadDocUtils';
+import { AiFixButton } from './AiFixButton';
 
 interface PayloadEditorProps {
   onRunPayload: (code: string, language: 'bash' | 'python' | 'uci', name: string) => void;
@@ -32,6 +33,7 @@ interface PayloadEditorProps {
   lastLog: ExecutionLog | null;
   onOpenAiGenerator: () => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
   injectedCode?: { code: string; language: 'bash' | 'python' | 'uci'; name?: string } | null;
   onClearInjectedCode?: () => void;
 }
@@ -43,6 +45,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
   lastLog,
   onOpenAiGenerator,
   onAnalyzeLog,
+  onAiFix,
   injectedCode,
   onClearInjectedCode,
 }) => {
@@ -282,17 +285,14 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
   const isCurrentCustom = templates.some((t) => t.id === selectedTemplateId && t.isCustom);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Header Controls Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <Zap className="w-5 h-5 text-amber-400" />
-              <h2 className="text-lg font-bold text-slate-100 font-mono">WiFi Pineapple Code Runner & Library</h2>
-              <span className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 rounded-full font-mono">
-                v2.1
-              </span>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-100">Payload library</h2>
             </div>
             <p className="text-xs text-slate-400">
               Compose, document, and execute payloads with inline docstrings, saved descriptions, and autonomous scheduling
@@ -306,7 +306,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
               className="flex items-center justify-center space-x-2 min-h-11 px-3.5 py-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-sm font-bold transition-all shadow-sm font-mono"
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Generate with Gemini</span>
+              <span>Generate with AI</span>
             </button>
 
             {/* Schedule Button */}
@@ -541,7 +541,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
           {/* Execution Output Console Box */}
           {lastLog && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center space-x-3">
                   <div
                     className={`p-2 rounded-xl border ${
@@ -569,13 +569,16 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onAnalyzeLog(lastLog)}
-                  className="flex items-center space-x-2 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all font-mono"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Analyze Output with Gemini</span>
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {lastLog.status === 'failed' && onAiFix && <AiFixButton onClick={() => onAiFix(lastLog)} />}
+                  <button
+                    onClick={() => onAnalyzeLog(lastLog)}
+                    className="inline-flex items-center gap-2 min-h-11 px-3 bg-slate-800 text-amber-200 border border-slate-700 rounded-xl text-xs font-bold"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Analyze output</span>
+                  </button>
+                </div>
               </div>
 
               {/* STDOUT View */}

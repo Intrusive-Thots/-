@@ -573,9 +573,9 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
             <Activity className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center space-x-2">
-              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-                <span>WiFi Pineapple Telemetry</span>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <h3 className="text-base font-bold text-slate-100 flex flex-wrap items-center gap-2 min-w-0">
+                <span>Telemetry</span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                   D3.js Live
                 </span>
@@ -859,7 +859,7 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
       <div className="relative">
         <div
           ref={containerRef}
-          className="w-full h-[290px] bg-slate-950/80 rounded-xl border border-slate-800/90 relative overflow-hidden"
+          className="w-full h-[220px] sm:h-[290px] bg-slate-950/80 rounded-xl border border-slate-800/90 relative overflow-hidden"
         >
           <svg
             ref={svgRef}

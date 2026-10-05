@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Boxes, Package, Power, RefreshCw, Settings2 } from 'lucide-react';
-import type { SSHConfig } from '../types';
+import type { ExecutionLog, SSHConfig } from '../types';
 import { sshExec } from '../utils/deviceSsh';
 import {
   DEVICE_SNAPSHOT_COMMAND,
@@ -21,6 +21,7 @@ import {
 interface DeviceControllerProps {
   config: SSHConfig;
   onHostFingerprint?: (fingerprint: string) => void;
+  onAiFix?: (log: ExecutionLog) => void;
 }
 
 interface PendingAction {
@@ -58,7 +59,7 @@ function sectionsOf(list: UciSection[], type: string): UciSection[] {
   return list.filter((section) => section.type === type);
 }
 
-export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHostFingerprint }) => {
+export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHostFingerprint, onAiFix }) => {
   const [snapshot, setSnapshot] = useState<DeviceSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [output, setOutput] = useState('');
@@ -67,6 +68,7 @@ export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHo
   const [packageQuery, setPackageQuery] = useState('');
   const [packageName, setPackageName] = useState('');
   const [pending, setPending] = useState<PendingAction | null>(null);
+  const [failedLog, setFailedLog] = useState<ExecutionLog | null>(null);
 
   const run = async (command: string, timeoutMs: number) => {
     setBusy(true);
@@ -77,14 +79,38 @@ export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHo
       const text = [data.stdout, data.stderr, data.error].filter(Boolean).join('\n');
       setOutput(text);
       if (!data.success || data.exitCode !== 0) {
-        setError(data.error || data.stderr || `Command exited ${data.exitCode ?? 1}`);
+        const message = data.error || data.stderr || `Command exited ${data.exitCode ?? 1}`;
+        setError(message);
+        setFailedLog({
+          id: `device_${Date.now()}`,
+          command,
+          timestamp: new Date().toLocaleTimeString(),
+          stdout: data.stdout || '',
+          stderr: data.stderr || data.error || message,
+          exitCode: data.exitCode ?? 1,
+          durationMs: 0,
+          status: 'failed',
+          host: config.host,
+        });
         return false;
       }
+      setFailedLog(null);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'SSH request failed';
       setError(message);
       setOutput(message);
+      setFailedLog({
+        id: `device_${Date.now()}`,
+        command,
+        timestamp: new Date().toLocaleTimeString(),
+        stdout: '',
+        stderr: message,
+        exitCode: 1,
+        durationMs: 0,
+        status: 'failed',
+        host: config.host,
+      });
       return false;
     } finally {
       setBusy(false);
@@ -100,15 +126,40 @@ export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHo
       const text = [data.stdout, data.stderr].filter(Boolean).join('\n');
       setOutput(text);
       if (!data.success || data.exitCode !== 0 || !data.stdout) {
+        const message = data.error || data.stderr || 'Could not read the device.';
         setSnapshot(null);
-        setError(data.error || data.stderr || 'Could not read the device.');
+        setError(message);
+        setFailedLog({
+          id: `device_${Date.now()}`,
+          command: 'Read this Pineapple',
+          timestamp: new Date().toLocaleTimeString(),
+          stdout: data.stdout || '',
+          stderr: data.stderr || data.error || message,
+          exitCode: data.exitCode ?? 1,
+          durationMs: 0,
+          status: 'failed',
+          host: config.host,
+        });
         return;
       }
+      setFailedLog(null);
       setSnapshot(parseDeviceSnapshot(data.stdout));
       setDrafts({});
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'SSH request failed';
       setSnapshot(null);
-      setError(err instanceof Error ? err.message : 'SSH request failed');
+      setError(message);
+      setFailedLog({
+        id: `device_${Date.now()}`,
+        command: 'Read this Pineapple',
+        timestamp: new Date().toLocaleTimeString(),
+        stdout: '',
+        stderr: message,
+        exitCode: 1,
+        durationMs: 0,
+        status: 'failed',
+        host: config.host,
+      });
     } finally {
       setBusy(false);
     }
@@ -225,7 +276,20 @@ export const DeviceController: React.FC<DeviceControllerProps> = ({ config, onHo
           <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />
           {busy ? 'Working…' : 'Read this Pineapple'}
         </button>
-        {error && <p className="text-sm text-rose-300">{error}</p>}
+        {error && (
+          <div className="space-y-2">
+            <p className="text-sm text-rose-300 break-words">{error}</p>
+            {failedLog && onAiFix && (
+              <button
+                type="button"
+                onClick={() => onAiFix(failedLog)}
+                className="min-h-11 px-3 rounded-xl text-sm font-bold border border-amber-500/40 bg-amber-500/10 text-amber-200"
+              >
+                AI Fix
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {!snapshot && (

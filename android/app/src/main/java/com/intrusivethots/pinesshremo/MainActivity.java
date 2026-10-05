@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PineappleSshPlugin.class);
+        registerPlugin(PineappleAiPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

@@ -7,7 +7,7 @@ android {
         applicationId "com.intrusivethots.pinesshremo"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
+        versionCode 4
         versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -38,6 +38,7 @@ dependencies {
     implementation project(':capacitor-android')
     implementation 'com.github.mwiede:jsch:0.2.23'
     implementation 'org.bouncycastle:bcprov-jdk18on:1.79'
+    implementation 'androidx.security:security-crypto:1.0.0'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

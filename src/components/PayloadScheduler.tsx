@@ -59,6 +59,7 @@ interface PayloadSchedulerProps {
   config: SSHConfig;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
   initialJobToCreate?: {
     name: string;
     code: string;
@@ -72,6 +73,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   config,
   onAddExecutionLog,
   onAnalyzeLog,
+  onAiFix,
   initialJobToCreate,
   onClearInitialJob,
   onHostFingerprint,
@@ -613,10 +615,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                 <CalendarClock className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
-                  <h2 className="text-lg font-bold text-slate-100">Payload Scheduler & Automation</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-100">Payload scheduler</h2>
                   <span className="px-2 py-0.5 text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-full font-semibold">
-                    OpenWrt & In-App
+                    OpenWrt and in-app
                   </span>
                 </div>
                 <p className="text-xs text-slate-400">
@@ -1045,7 +1047,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
       {/* MODAL: Create New Scheduled Job */}
       {isNewJobModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 bg-slate-900/80">
@@ -1392,7 +1394,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
       {/* MODAL: Presets Chooser */}
       {isPresetModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
               <div className="flex items-center space-x-2">
@@ -1442,7 +1444,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
       {/* MODAL: View Job Code & Crontab Line */}
       {viewingCodeJob && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
               <div>
@@ -1492,7 +1494,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
 
       {/* DRAWER / MODAL: Execution History & Output */}
       {viewingHistoryJob && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 flex items-end sm:items-center justify-center p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
               <div>
@@ -1522,8 +1524,8 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                     key={exec.id}
                     className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2 font-mono text-xs"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                             exec.status === 'success'
@@ -1535,8 +1537,29 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                         </span>
                         <span className="text-slate-300">{new Date(exec.timestamp).toLocaleString()}</span>
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-slate-500 text-[11px]">[{exec.durationMs}ms]</span>
+                        {exec.status === 'failed' && onAiFix && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onAiFix({
+                                id: exec.id,
+                                command: `Scheduled Job: ${viewingHistoryJob.name}`,
+                                timestamp: new Date(exec.timestamp).toLocaleTimeString(),
+                                stdout: exec.stdout,
+                                stderr: exec.stderr,
+                                exitCode: exec.exitCode,
+                                durationMs: exec.durationMs,
+                                status: exec.status,
+                                host: config.host,
+                              });
+                            }}
+                            className="min-h-11 px-3 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-200 border border-amber-500/40"
+                          >
+                            AI Fix
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             const mockLog: ExecutionLog = {
@@ -1552,10 +1575,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
                             };
                             onAnalyzeLog(mockLog);
                           }}
-                          className="px-2 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded text-[10px] flex items-center space-x-1"
+                          className="min-h-11 px-3 bg-slate-800 text-amber-200 border border-slate-700 rounded-lg text-xs font-bold inline-flex items-center gap-1"
                         >
                           <Sparkles className="w-3 h-3 text-amber-400" />
-                          <span>Analyze Output</span>
+                          <span>Analyze</span>
                         </button>
                       </div>
                     </div>

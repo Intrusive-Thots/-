@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { SSHConfig, PineappleStats, ExecutionLog } from './types';
 import { Navbar } from './components/Navbar';
 import { ConnectionModal } from './components/ConnectionModal';
@@ -11,6 +11,8 @@ import { DeviceController } from './components/DeviceController';
 import { emptyDeviceStats, parseDeviceStatsOutput, parsePineApStatus } from './utils/deviceStats';
 import { sshExec, sshStats, sshTest } from './utils/deviceSsh';
 import { forgetHostPin, readHostPin, writeHostPin } from './utils/hostPin';
+import { AiStatus, clearAiSettings, completeAi, loadAiStatus, saveAiSettings } from './utils/aiClient';
+import { blockedSuggestionReason, buildAnalyzeMessages, buildFixMessages, buildGenerateMessages, isScriptCommand, parseFixResponse, type AiProvider } from './utils/aiFix';
 
 const DEFAULT_HOST = '172.16.42.1';
 const DEFAULT_PORT = 22;
@@ -51,7 +53,8 @@ export default function App() {
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [aiModalTab, setAiModalTab] = useState<'generate' | 'analyze'>('generate');
+  const [aiModalTab, setAiModalTab] = useState<'generate' | 'analyze' | 'fix'>('generate');
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [logToAnalyze, setLogToAnalyze] = useState<ExecutionLog | null>(null);
   const [editorInjectedCode, setEditorInjectedCode] = useState<{
     code: string;
@@ -74,6 +77,10 @@ export default function App() {
   }, []);
 
   const statsRequest = useRef(0);
+
+  useEffect(() => {
+    loadAiStatus().then(setAiStatus).catch(() => setAiStatus(null));
+  }, []);
 
   const loadStats = useCallback(async (cfg: SSHConfig) => {
     const requestId = ++statsRequest.current;
@@ -245,37 +252,37 @@ export default function App() {
 
   const handleRefreshStats = () => loadStats(sshConfig);
 
-  // AI Script Generator Call
   const handleGenerateScriptApi = async (goal: string, language: 'bash' | 'python') => {
-    const res = await fetch('/api/ai/generate-payload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal, language }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Failed to generate payload');
-    }
-    return data.text;
+    const messages = buildGenerateMessages(goal, language);
+    return completeAi(messages.system, messages.user);
   };
 
-  // AI Log Analysis Call
   const handleAnalyzeLogApi = async (log: ExecutionLog) => {
-    const res = await fetch('/api/ai/analyze-log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        command: log.command,
-        stdout: log.stdout,
-        stderr: log.stderr,
-        exitCode: log.exitCode,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      throw new Error(data.error || 'Failed to analyze log');
+    const messages = buildAnalyzeMessages(log);
+    return completeAi(messages.system, messages.user);
+  };
+
+  const handleFixLog = async (log: ExecutionLog) => {
+    const messages = buildFixMessages(log);
+    return parseFixResponse(await completeAi(messages.system, messages.user));
+  };
+
+  const handleSaveAi = async (input: { provider: AiProvider; model: string; apiKey: string }) => {
+    setAiStatus(await saveAiSettings(input));
+  };
+
+  const handleClearAi = async () => {
+    setAiStatus(await clearAiSettings());
+  };
+
+  const handleRunSuggested = (command: string) => {
+    if (blockedSuggestionReason(command)) return;
+    setIsAiModalOpen(false);
+    if (isScriptCommand(command)) {
+      void handleRunPayload(command, 'bash', 'AI suggested fix');
+      return;
     }
-    return data.analysis;
+    void handleExecuteCommand(command);
   };
 
   const handleOpenAiAnalyzeForLog = (log: ExecutionLog) => {
@@ -289,8 +296,14 @@ export default function App() {
     setIsAiModalOpen(true);
   };
 
+  const handleOpenAiFix = (log: ExecutionLog) => {
+    setLogToAnalyze(log);
+    setAiModalTab('fix');
+    setIsAiModalOpen(true);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+    <div className="h-dvh max-h-dvh overflow-hidden bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
       {/* Top Header Navbar */}
       <Navbar
         config={sshConfig}
@@ -303,7 +316,8 @@ export default function App() {
       />
 
       {/* Main Body Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+      <main className={`flex-1 min-h-0 w-full ${activeTab === 'terminal' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto overflow-x-hidden'}`}>
+        <div className={`max-w-7xl w-full mx-auto px-4 py-4 sm:px-6 sm:py-6 ${activeTab === 'terminal' ? 'flex-1 min-h-0 flex flex-col' : ''}`}>
         {activeTab === 'dashboard' && (
           <PineAPDashboard
             stats={stats}
@@ -317,6 +331,7 @@ export default function App() {
             onOpenEditor={() => setActiveTab('editor')}
             onOpenTerminal={() => setActiveTab('terminal')}
             onHostFingerprint={handleObservedFingerprint}
+            onAiFix={handleOpenAiFix}
           />
         )}
 
@@ -331,6 +346,7 @@ export default function App() {
             lastLog={logs.length > 0 ? logs[logs.length - 1] : null}
             onOpenAiGenerator={handleOpenAiGenerator}
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
+            onAiFix={handleOpenAiFix}
             injectedCode={editorInjectedCode}
             onClearInjectedCode={() => setEditorInjectedCode(null)}
           />
@@ -345,12 +361,17 @@ export default function App() {
             isExecuting={isExecuting}
             onClearLogs={() => setLogs([])}
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
+            onAiFix={handleOpenAiFix}
             onHostFingerprint={handleObservedFingerprint}
           />
         )}
 
         {activeTab === 'device' && (
-          <DeviceController config={sshConfig} onHostFingerprint={handleObservedFingerprint} />
+          <DeviceController
+            config={sshConfig}
+            onHostFingerprint={handleObservedFingerprint}
+            onAiFix={handleOpenAiFix}
+          />
         )}
 
         {activeTab === 'scheduler' && (
@@ -358,11 +379,13 @@ export default function App() {
             config={sshConfig}
             onAddExecutionLog={addLog}
             onAnalyzeLog={handleOpenAiAnalyzeForLog}
+            onAiFix={handleOpenAiFix}
             initialJobToCreate={initialScheduledJob}
             onClearInitialJob={() => setInitialScheduledJob(null)}
             onHostFingerprint={handleObservedFingerprint}
           />
         )}
+        </div>
       </main>
 
       {/* Connection Config Modal */}
@@ -375,9 +398,11 @@ export default function App() {
         isTesting={isTesting}
         testResult={testResult}
         onForgetHostPin={handleForgetHostPin}
+        aiStatus={aiStatus}
+        onSaveAi={handleSaveAi}
+        onClearAi={handleClearAi}
       />
 
-      {/* Gemini AI Assistant Modal */}
       <AiAssistantModal
         isOpen={isAiModalOpen}
         onClose={() => setIsAiModalOpen(false)}
@@ -395,6 +420,8 @@ export default function App() {
         }}
         logToAnalyze={logToAnalyze}
         onAnalyzeLogApi={handleAnalyzeLogApi}
+        onFixLog={handleFixLog}
+        onRunSuggested={handleRunSuggested}
       />
     </div>
   );

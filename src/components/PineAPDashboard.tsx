@@ -16,6 +16,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import { SystemMetricsWidget } from './SystemMetricsWidget';
+import { AiFixButton } from './AiFixButton';
 import { PINEAP_START_COMMAND, PINEAP_STOP_COMMAND, WIFI_RADIOS_COMMAND } from '../utils/sshCommands';
 
 interface PineAPDashboardProps {
@@ -30,6 +31,7 @@ interface PineAPDashboardProps {
   onOpenEditor: () => void;
   onOpenTerminal: () => void;
   onHostFingerprint?: (fingerprint: string) => void;
+  onAiFix?: (log: ExecutionLog) => void;
 }
 
 export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
@@ -44,26 +46,27 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
   onOpenEditor,
   onOpenTerminal,
   onHostFingerprint,
+  onAiFix,
 }) => {
   const pineap = stats?.pineapStatus;
   const pineapKnown = Boolean(pineap?.known);
   const pineapLabel = !pineapKnown ? 'NO STATUS' : pineap?.enabled ? 'PINEAP ACTIVE' : 'PINEAP STOPPED';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Banner / Hero status */}
       <div className="p-4 sm:p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/30 border border-slate-800 shadow-xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
+          <div className="space-y-2 min-w-0">
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="shrink-0 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400">
                 <Wifi className="w-6 h-6" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-100 flex items-center space-x-2">
-                  <span>{stats?.model || 'No device snapshot'}</span>
+              <div className="min-w-0">
+                <h2 className="text-lg sm:text-xl font-bold text-slate-100 flex flex-wrap items-center gap-2">
+                  <span className="break-words">{stats?.model || 'No device snapshot'}</span>
                   <span className="px-2 py-0.5 text-[10px] font-mono bg-slate-800 text-amber-300 rounded border border-slate-700">
                     {stats?.firmwareVersion || 'Firmware unread'}
                   </span>
@@ -353,9 +356,12 @@ export const PineAPDashboard: React.FC<PineAPDashboardProps> = ({
           </button>
         </div>
         {lastLog && (
-          <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-40 overflow-auto whitespace-pre-wrap">
-            {`$ ${lastLog.command}\n${lastLog.stdout || ''}${lastLog.stderr ? `\n${lastLog.stderr}` : ''}\n[${lastLog.status} exit ${lastLog.exitCode ?? 'n/a'} ${lastLog.durationMs}ms]`}
-          </pre>
+          <div className="space-y-2">
+            {lastLog.status === 'failed' && onAiFix && <AiFixButton onClick={() => onAiFix(lastLog)} />}
+            <pre className="text-[11px] font-mono text-slate-300 bg-slate-950 border border-slate-800 rounded-xl p-3 max-h-40 overflow-auto whitespace-pre-wrap break-all">
+              {`$ ${lastLog.command}\n${lastLog.stdout || ''}${lastLog.stderr ? `\n${lastLog.stderr}` : ''}\n[${lastLog.status} exit ${lastLog.exitCode ?? 'n/a'} ${lastLog.durationMs}ms]`}
+            </pre>
+          </div>
         )}
       </div>
     </div>

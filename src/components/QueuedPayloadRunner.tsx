@@ -33,6 +33,7 @@ interface QueuedPayloadRunnerProps {
   config: SSHConfig;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
   onHostFingerprint?: (fingerprint: string) => void;
   onClose?: () => void;
 }
@@ -41,6 +42,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
   config,
   onAddExecutionLog,
   onAnalyzeLog,
+  onAiFix,
   onHostFingerprint,
   onClose,
 }) => {
@@ -755,7 +757,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className={`p-3 rounded-xl border transition-all flex items-center justify-between ${
+                      className={`p-3 rounded-xl border transition-all flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${
                         isCurrent
                           ? 'bg-amber-500/10 border-amber-500 text-amber-200 ring-1 ring-amber-500/30 shadow-lg'
                           : item.status === 'completed'
@@ -807,6 +809,27 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
                       <div className="flex items-center space-x-2 shrink-0 ml-2">
                         {item.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                         {item.status === 'failed' && <XCircle className="w-4 h-4 text-rose-400" />}
+                        {item.status === 'failed' && onAiFix && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAiFix({
+                                id: item.id,
+                                command: `[Payload Script: ${item.name}]`,
+                                timestamp: new Date().toLocaleTimeString(),
+                                stdout: item.stdout || '',
+                                stderr: item.stderr || item.error || '',
+                                exitCode: item.exitCode ?? 1,
+                                durationMs: item.durationMs || 0,
+                                status: 'failed',
+                                host: config.host,
+                              })
+                            }
+                            className="min-h-11 px-3 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-200 border border-amber-500/40"
+                          >
+                            AI Fix
+                          </button>
+                        )}
                         {isCurrent && <Clock className="w-4 h-4 text-amber-400 animate-spin" />}
 
                         {!isRunning && (

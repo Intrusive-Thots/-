@@ -8,6 +8,8 @@ import dotenv from "dotenv";
 import { type CpuSample } from "./src/utils/deviceStats.ts";
 import { METRICS_COMMAND, STATS_COMMAND, TEST_COMMAND, wrapScriptCommand } from "./src/utils/sshCommands.ts";
 import { interpretSystemMetrics } from "./src/utils/systemMetrics.ts";
+import { completeWithProvider } from "./src/utils/aiRemote.ts";
+import { isAiProvider } from "./src/utils/aiFix.ts";
 
 dotenv.config();
 
@@ -265,6 +267,31 @@ async function startApp() {
         mode: 'offline',
         error: err.message || 'SSH connection unavailable',
       });
+    }
+  });
+
+  // Desktop-only proxy. The phone calls the provider itself and never sends the key here.
+  app.post('/api/ai/complete', async (req, res) => {
+    const { provider, model, apiKey, system, user } = req.body ?? {};
+    if (!isAiProvider(provider)) {
+      res.status(400).json({ success: false, error: 'Choose OpenAI, Anthropic, or Gemini.' });
+      return;
+    }
+    if (typeof apiKey !== 'string' || !apiKey.trim()) {
+      res.status(400).json({ success: false, error: 'Save an API key in Config before using AI.' });
+      return;
+    }
+    try {
+      const text = await completeWithProvider({
+        provider,
+        model: typeof model === 'string' ? model : '',
+        apiKey,
+        system: typeof system === 'string' ? system : '',
+        user: typeof user === 'string' ? user : '',
+      });
+      res.json({ success: true, text });
+    } catch (err: any) {
+      res.status(502).json({ success: false, error: err.message || 'The AI request failed.' });
     }
   });
 
