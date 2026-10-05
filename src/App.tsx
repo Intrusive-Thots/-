@@ -8,6 +8,7 @@ import { TerminalConsole } from './components/TerminalConsole';
 import { PayloadScheduler } from './components/PayloadScheduler';
 import { AiAssistantModal } from './components/AiAssistantModal';
 import { DeviceController } from './components/DeviceController';
+import { LiveStatusPanel } from './components/LiveStatusPanel';
 import { emptyDeviceStats, parseDeviceStatsOutput, parsePineApStatus } from './utils/deviceStats';
 import { sshExec, sshStats, sshTest } from './utils/deviceSsh';
 import { forgetHostPin, readHostPin, writeHostPin } from './utils/hostPin';
@@ -37,7 +38,7 @@ export default function App() {
     hostFingerprint: readHostPin(DEFAULT_HOST, DEFAULT_PORT),
   });
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'status' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai'>('dashboard');
 
   // Device stats stay empty until a status read succeeds.
   const [stats, setStats] = useState<PineappleStats | null>(null);
@@ -333,6 +334,10 @@ export default function App() {
             onHostFingerprint={handleObservedFingerprint}
             onAiFix={handleOpenAiFix}
           />
+        )}
+
+        {activeTab === 'status' && (
+          <LiveStatusPanel config={sshConfig} onHostFingerprint={handleObservedFingerprint} />
         )}
 
         {activeTab === 'editor' && (

@@ -54,6 +54,7 @@ import {
   toLocalTimeInput,
 } from '../utils/schedulerUtils';
 import { sshExec } from '../utils/deviceSsh';
+import { readSchedulerRunning, writeSchedulerRunning } from '../utils/schedulerStore';
 
 interface PayloadSchedulerProps {
   config: SSHConfig;
@@ -111,7 +112,7 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   });
 
   // Master runner toggle
-  const [isSchedulerRunning, setIsSchedulerRunning] = useState<boolean>(true);
+  const [isSchedulerRunning, setIsSchedulerRunning] = useState<boolean>(readSchedulerRunning);
   const [activeTab, setActiveTab] = useState<'jobs' | 'hardware-crontab' | 'history'>('jobs');
 
   // Currently executing job IDs in the client
@@ -197,6 +198,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
       if (onClearInitialJob) onClearInitialJob();
     }
   }, [initialJobToCreate, onClearInitialJob]);
+
+  useEffect(() => {
+    writeSchedulerRunning(isSchedulerRunning);
+  }, [isSchedulerRunning]);
 
   // Persist jobs to localStorage
   useEffect(() => {

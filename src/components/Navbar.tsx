@@ -1,6 +1,6 @@
 import React from 'react';
 import { SSHConfig, PineappleStats } from '../types';
-import { Wifi, Terminal, Server, RefreshCw, Settings, Zap, CalendarClock, Package } from 'lucide-react';
+import { Wifi, Terminal, Server, RefreshCw, Settings, Zap, CalendarClock, Package, Activity } from 'lucide-react';
 
 interface NavbarProps {
   config: SSHConfig;
@@ -8,16 +8,17 @@ interface NavbarProps {
   isTesting: boolean;
   onOpenSettings: () => void;
   onRefreshStats: () => void;
-  activeTab: 'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai';
-  setActiveTab: (tab: 'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai') => void;
+  activeTab: 'dashboard' | 'status' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai';
+  setActiveTab: (tab: 'dashboard' | 'status' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai') => void;
 }
 
 const TABS = [
   { id: 'dashboard' as const, label: 'Dash', desktop: 'Dashboard', icon: Server },
-  { id: 'editor' as const, label: 'Payloads', desktop: 'Payloads', icon: Zap },
+  { id: 'status' as const, label: 'Live', desktop: 'Status', icon: Activity },
+  { id: 'editor' as const, label: 'Pay', desktop: 'Payloads', icon: Zap },
   { id: 'terminal' as const, label: 'Term', desktop: 'Terminal', icon: Terminal },
   { id: 'scheduler' as const, label: 'Jobs', desktop: 'Scheduler', icon: CalendarClock },
-  { id: 'device' as const, label: 'Device', desktop: 'Device', icon: Package },
+  { id: 'device' as const, label: 'Dev', desktop: 'Device', icon: Package },
 ];
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,7 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </p>
           </div>
 
-          <nav className="hidden lg:flex items-center gap-1 min-w-0">
+          <nav className="hidden lg:flex flex-wrap items-center gap-1 min-w-0">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
@@ -95,7 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </div>
 
-        <nav className="grid grid-cols-5 gap-1 pb-2 lg:hidden" aria-label="Screens">
+        <nav className="grid grid-cols-6 gap-1 pb-2 lg:hidden" aria-label="Screens">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
