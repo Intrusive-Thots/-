@@ -5,7 +5,9 @@ import { createServer as createViteServer } from "vite";
 import { Client as SSHClient } from "ssh2";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
-import { cpuPercentBetween, parseProcStatCpu, type CpuSample } from "./src/utils/deviceStats.ts";
+import { type CpuSample } from "./src/utils/deviceStats.ts";
+import { METRICS_COMMAND, STATS_COMMAND, TEST_COMMAND, wrapScriptCommand } from "./src/utils/sshCommands.ts";
+import { interpretSystemMetrics } from "./src/utils/systemMetrics.ts";
 
 dotenv.config();
 
@@ -23,14 +25,6 @@ interface SSHConfigBody {
 
 const MAX_STREAM_CHARS = 200_000;
 const previousCpuSamples = new Map<string, CpuSample>();
-
-function safeScriptFilename(filename: unknown): string {
-  const fallback = `payload_${Date.now()}.sh`;
-  if (typeof filename !== 'string') return fallback;
-  const base = path.basename(filename).replace(/[^A-Za-z0-9._-]/g, '');
-  if (!base || base.startsWith('.') || base.length > 64) return fallback;
-  return base;
-}
 
 function appendCapped(current: string, chunk: string): string {
   if (current.length >= MAX_STREAM_CHARS) return current;
@@ -183,8 +177,7 @@ async function startApp() {
     const config: SSHConfigBody = req.body;
 
     try {
-      const testCmd = 'uname -a; uptime; cat /etc/openwrt_release 2>/dev/null || true';
-      const result = await runSSHCommand(config, testCmd);
+      const result = await runSSHCommand(config, TEST_COMMAND);
       const durationMs = Date.now() - startTime;
 
       res.json({
@@ -216,14 +209,7 @@ async function startApp() {
     }
 
     try {
-      let finalCommand = command;
-      if (asScript) {
-        const scriptName = safeScriptFilename(filename);
-        const base64Content = Buffer.from(command).toString('base64');
-        const remotePath = `/tmp/payloads/${scriptName}`;
-        const invoke = scriptName.endsWith('.py') ? `python3 ${remotePath}` : remotePath;
-        finalCommand = `mkdir -p /tmp/payloads && printf '%s' '${base64Content}' | base64 -d > ${remotePath} && chmod +x ${remotePath} && ${invoke}`;
-      }
+      const finalCommand = asScript ? wrapScriptCommand(command, filename) : command;
 
       const result = await runSSHCommand(config, finalCommand);
       const durationMs = Date.now() - startTime;
@@ -250,15 +236,7 @@ async function startApp() {
   app.post('/api/ssh/stats', async (req, res) => {
     const config: SSHConfigBody = req.body;
     try {
-      const multiCmd = `
-        echo "===RELEASE==="; cat /etc/openwrt_release 2>/dev/null; uname -a;
-        echo "===UPTIME==="; uptime;
-        echo "===FREE==="; free -m 2>/dev/null || free;
-        echo "===DF==="; df -h;
-        echo "===IFCONFIG==="; ifconfig;
-        echo "===PINEAP==="; pineap get_status 2>/dev/null || echo "PINEAP_NOT_FOUND";
-      `;
-      const result = await runSSHCommand(config, multiCmd);
+      const result = await runSSHCommand(config, STATS_COMMAND);
       res.json({ success: true, output: result.stdout, hostFingerprint: result.hostFingerprint });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -271,111 +249,15 @@ async function startApp() {
     const startTime = Date.now();
 
     try {
-      const cmd = `cat /proc/loadavg 2>/dev/null || uptime; echo "===MEM==="; free -m 2>/dev/null || cat /proc/meminfo; echo "===STAT==="; head -n 1 /proc/stat 2>/dev/null || true`;
-      const result = await runSSHCommand(config, cmd);
-      const output = result.stdout || '';
-
-      // Parse loadavg (e.g. 0.18 0.22 0.15 1/48 1824)
-      let load1 = 0;
-      let load5 = 0;
-      let load15 = 0;
-      const loadMatch = output.match(/([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)/);
-      if (loadMatch) {
-        load1 = parseFloat(loadMatch[1]);
-        load5 = parseFloat(loadMatch[2]);
-        load15 = parseFloat(loadMatch[3]);
-      }
-
-      let memTotalMb = 0;
-      let memUsedMb = 0;
-      let memFreeMb = 0;
-
-      const freeSection = output.split('===MEM===')[1]?.split('===STAT===')[0] || '';
-      const memLineMatch = freeSection.match(/Mem:\s+(\d+)\s+(\d+)\s+(\d+)/i);
-      if (memLineMatch) {
-        memTotalMb = parseInt(memLineMatch[1], 10) || 0;
-        memUsedMb = parseInt(memLineMatch[2], 10) || 0;
-        memFreeMb = parseInt(memLineMatch[3], 10) || Math.max(0, memTotalMb - memUsedMb);
-        if (memTotalMb > 8192) {
-          memTotalMb = Math.round(memTotalMb / 1024);
-          memUsedMb = Math.round(memUsedMb / 1024);
-          memFreeMb = Math.round(memFreeMb / 1024);
-        }
-      } else {
-        const totalK = freeSection.match(/MemTotal:\s+(\d+)\s+kB/i);
-        const freeK = freeSection.match(/MemFree:\s+(\d+)\s+kB/i);
-        const availK = freeSection.match(/MemAvailable:\s+(\d+)\s+kB/i);
-        if (totalK) {
-          memTotalMb = Math.round(parseInt(totalK[1], 10) / 1024);
-          const avail = availK ? parseInt(availK[1], 10) : (freeK ? parseInt(freeK[1], 10) : 0);
-          memFreeMb = Math.round(avail / 1024);
-          memUsedMb = Math.max(0, memTotalMb - memFreeMb);
-        }
-      }
-
-      if (!loadMatch || memTotalMb <= 0) {
-        res.status(502).json({
-          success: false,
-          durationMs: Date.now() - startTime,
-          mode: 'offline',
-          error: !loadMatch
-            ? 'The device did not return a readable load average.'
-            : 'The device did not return a readable memory report.',
-          hostFingerprint: result.hostFingerprint,
-        });
-        return;
-      }
-
-      const memPercent = Math.min(100, Math.max(0, Math.round((memUsedMb / memTotalMb) * 100)));
-      const sampleKey = `${config.host || ''}:${config.port || 22}`;
-      const sample = parseProcStatCpu(output);
-      const previous = previousCpuSamples.get(sampleKey);
-      if (!sample) {
-        res.status(502).json({
-          success: false,
-          durationMs: Date.now() - startTime,
-          mode: 'offline',
-          error: 'The device did not return a readable /proc/stat sample.',
-          hostFingerprint: result.hostFingerprint,
-        });
-        return;
-      }
-      previousCpuSamples.set(sampleKey, sample);
-      const measuredCpu = previous ? cpuPercentBetween(previous, sample) : null;
-
-      if (measuredCpu === null) {
-        res.json({
-          success: true,
-          metric: null,
-          pending: true,
-          durationMs: Date.now() - startTime,
-          mode: 'live',
-          hostFingerprint: result.hostFingerprint,
-        });
-        return;
-      }
-
-      const now = new Date();
-      const timeLabel = now.toTimeString().split(' ')[0];
-
-      res.json({
-        success: true,
-        metric: {
-          timestamp: Date.now(),
-          timeLabel,
-          cpuPercent: measuredCpu,
-          memPercent,
-          memUsedMb,
-          memTotalMb,
-          memFreeMb,
-          load1,
-          load5,
-          load15,
-        },
-        durationMs: Date.now() - startTime,
-        mode: 'live',
-        hostFingerprint: result.hostFingerprint,
-      });
+      const result = await runSSHCommand(config, METRICS_COMMAND);
+      const interpreted = interpretSystemMetrics(
+        result.stdout || '',
+        `${config.host || ''}:${config.port || 22}`,
+        previousCpuSamples,
+        Date.now() - startTime,
+        result.hostFingerprint,
+      );
+      res.status(interpreted.status).json(interpreted.body);
     } catch (err: any) {
       res.status(502).json({
         success: false,

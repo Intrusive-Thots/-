@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SSHConfig, PayloadTemplate, QueuedPayloadItem, AggregatedQueueLog, ExecutionLog } from '../types';
 import { INITIAL_PAYLOAD_TEMPLATES } from '../data/payloadTemplates';
+import { sshExec } from '../utils/deviceSsh';
 import {
   ListOrdered,
   Play,
@@ -340,22 +341,11 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
           currentQueue[i].language === 'python' ? 'py' : 'sh'
         }`;
 
-        const res = await fetch('/api/ssh/exec', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            config,
-            command: currentQueue[i].code,
-            asScript: true,
-            filename,
-          }),
-        });
-
-        const data = await res.json();
+        const { ok, data } = await sshExec(config, currentQueue[i].code, { asScript: true, filename });
         if (data.hostFingerprint) onHostFingerprint?.(data.hostFingerprint);
         const itemDurationMs = Date.now() - itemStartTime;
 
-        if (res.ok && data.success && data.exitCode === 0) {
+        if (ok && data.success && data.exitCode === 0) {
           currentQueue[i].status = 'completed';
           currentQueue[i].stdout = data.stdout || '';
           currentQueue[i].stderr = data.stderr || '';

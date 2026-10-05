@@ -231,7 +231,7 @@ export const ConnectionModal: React.FC<ConnectionModalProps> = ({
               <span className="text-xs font-bold text-slate-200">SSH target</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Commands and status reads go to this Pineapple over SSH. The dashboard stays empty until a connection succeeds.
+              This phone opens SSH itself. Join the Pineapple Wi-Fi, or any network that can reach it, then enter the IP, username, and password and tap Test Connection. The usual address is 172.16.42.1 on port 22. The dashboard stays empty until that connection succeeds. The first accepted host key is saved on this phone.
             </p>
           </div>
 

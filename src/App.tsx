@@ -8,6 +8,7 @@ import { TerminalConsole } from './components/TerminalConsole';
 import { PayloadScheduler } from './components/PayloadScheduler';
 import { AiAssistantModal } from './components/AiAssistantModal';
 import { emptyDeviceStats, parseDeviceStatsOutput, parsePineApStatus } from './utils/deviceStats';
+import { sshExec, sshStats, sshTest } from './utils/deviceSsh';
 import { forgetHostPin, readHostPin, writeHostPin } from './utils/hostPin';
 
 const DEFAULT_HOST = '172.16.42.1';
@@ -78,14 +79,9 @@ export default function App() {
     setIsRefreshing(true);
     setStatsError(null);
     try {
-      const res = await fetch('/api/ssh/stats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshStats(cfg);
       if (requestId !== statsRequest.current) return;
-      if (!res.ok || !data.success || typeof data.output !== 'string') {
+      if (!ok || !data.success || typeof data.output !== 'string') {
         setStats((prev) => (prev ? { ...prev, connected: false } : null));
         setStatsError(data.error || 'Could not read device status.');
         return;
@@ -113,12 +109,7 @@ export default function App() {
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/ssh/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfgToTest),
-      });
-      const data = await res.json();
+      const { data } = await sshTest(cfgToTest);
 
       if (data.success) {
         const pinned = pinConfig(cfgToTest, data.hostFingerprint);
@@ -154,16 +145,7 @@ export default function App() {
     const startTime = Date.now();
 
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config: sshConfig,
-          command,
-        }),
-      });
-
-      const data = await res.json();
+      const { data } = await sshExec(sshConfig, command);
       const durationMs = Date.now() - startTime;
       const succeeded = Boolean(data.success && data.exitCode === 0);
 
@@ -219,18 +201,10 @@ export default function App() {
     const startTime = Date.now();
 
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config: sshConfig,
-          command: code,
-          asScript: true,
-          filename: `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${language === 'python' ? 'py' : 'sh'}`,
-        }),
+      const { data } = await sshExec(sshConfig, code, {
+        asScript: true,
+        filename: `${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.${language === 'python' ? 'py' : 'sh'}`,
       });
-
-      const data = await res.json();
       const durationMs = Date.now() - startTime;
       if (data.hostFingerprint) {
         setSshConfig((prev) => pinConfig(prev, data.hostFingerprint));

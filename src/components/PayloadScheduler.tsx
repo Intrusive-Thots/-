@@ -53,6 +53,7 @@ import {
   toLocalDateInput,
   toLocalTimeInput,
 } from '../utils/schedulerUtils';
+import { sshExec } from '../utils/deviceSsh';
 
 interface PayloadSchedulerProps {
   config: SSHConfig;
@@ -286,21 +287,10 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
     const scriptFilename = `scheduled_${job.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}.sh`;
 
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: job.code,
-          asScript: true,
-          filename: scriptFilename,
-        }),
-      });
-
-      const data = await res.json();
+      const { ok, data } = await sshExec(config, job.code, { asScript: true, filename: scriptFilename });
       noteHostFingerprint(data);
       const durationMs = Date.now() - startTime;
-      const isSuccess = Boolean(res.ok && data.success && data.exitCode === 0);
+      const isSuccess = Boolean(ok && data.success && data.exitCode === 0);
 
       const executionRecord: ScheduledPayloadExecution = {
         id: `exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -396,17 +386,9 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
     setDeviceSyncFeedback(`Deploying payload and registering in OpenWrt crontab...`);
 
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: deployCmd,
-        }),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshExec(config, deployCmd);
       noteHostFingerprint(data);
-      if (res.ok && data.success && data.exitCode === 0) {
+      if (ok && data.success && data.exitCode === 0) {
         setJobs((prev) =>
           prev.map((j) =>
             j.id === job.id
@@ -436,17 +418,9 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
       return;
     }
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: removeCmd,
-        }),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshExec(config, removeCmd);
       noteHostFingerprint(data);
-      if (!res.ok || !data.success || data.exitCode !== 0) {
+      if (!ok || !data.success || data.exitCode !== 0) {
         setDeviceSyncFeedback(data.error || data.stderr || 'The device crontab was not updated.');
         return;
       }
@@ -466,30 +440,23 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   const handleFetchHardwareCrontab = async () => {
     setIsLoadingCrontab(true);
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: 'crontab -l 2>/dev/null || cat /etc/crontabs/root 2>/dev/null || echo "# No crontabs configured"',
-        }),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshExec(
+        config,
+        'crontab -l 2>/dev/null || cat /etc/crontabs/root 2>/dev/null || echo "# No crontabs configured"',
+      );
       noteHostFingerprint(data);
-      setHardwareCrontab(data.stdout || '# Empty crontab');
+      setHardwareCrontab(!ok || !data.success ? `# Failed to fetch crontab: ${data.error || 'SSH failed'}` : data.stdout || '# Empty crontab');
 
-      // Check cron daemon status
-      const statusRes = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: '/etc/init.d/cron status 2>/dev/null || ps | grep crond | grep -v grep || echo "Unknown"',
-        }),
-      });
-      const statusData = await statusRes.json();
-      noteHostFingerprint(statusData);
-      setHardwareCronStatus(statusData.stdout || 'Status unknown');
+      const statusResult = await sshExec(
+        config,
+        '/etc/init.d/cron status 2>/dev/null || ps | grep crond | grep -v grep || echo "Unknown"',
+      );
+      noteHostFingerprint(statusResult.data);
+      setHardwareCronStatus(
+        !statusResult.ok || !statusResult.data.success
+          ? statusResult.data.error || 'Status unknown'
+          : statusResult.data.stdout || 'Status unknown',
+      );
     } catch (err: any) {
       setHardwareCrontab(`# Failed to fetch crontab: ${err.message}`);
     } finally {
@@ -501,16 +468,15 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   const handleRestartCronDaemon = async () => {
     setIsLoadingCrontab(true);
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: '/etc/init.d/cron enable && /etc/init.d/cron restart && /etc/init.d/cron status',
-        }),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshExec(
+        config,
+        '/etc/init.d/cron enable && /etc/init.d/cron restart && /etc/init.d/cron status',
+      );
       noteHostFingerprint(data);
+      if (!ok || !data.success || data.exitCode !== 0) {
+        setDeviceSyncFeedback(data.error || data.stderr || 'The cron service was not restarted.');
+        return;
+      }
       setHardwareCronStatus(data.stdout || 'Restarted');
       setDeviceSyncFeedback('Cron daemon enabled and restarted.');
       setTimeout(() => setDeviceSyncFeedback(null), 3500);
@@ -526,17 +492,12 @@ export const PayloadScheduler: React.FC<PayloadSchedulerProps> = ({
   const handleFetchCronLogs = async () => {
     setIsLoadingCrontab(true);
     try {
-      const res = await fetch('/api/ssh/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config,
-          command: 'logread 2>/dev/null | grep -i cron | tail -n 25 || echo "No cron syslog entries found."',
-        }),
-      });
-      const data = await res.json();
+      const { ok, data } = await sshExec(
+        config,
+        'logread 2>/dev/null | grep -i cron | tail -n 25 || echo "No cron syslog entries found."',
+      );
       noteHostFingerprint(data);
-      setHardwareSyslog(data.stdout || 'No cron syslog available.');
+      setHardwareSyslog(!ok || !data.success ? data.error || 'No cron syslog available.' : data.stdout || 'No cron syslog available.');
     } catch (err: any) {
       setHardwareSyslog(`Error reading logs: ${err.message}`);
     } finally {

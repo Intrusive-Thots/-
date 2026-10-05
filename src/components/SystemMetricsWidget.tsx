@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { SSHConfig, SystemMetricPoint } from '../types';
+import { sshMetrics } from '../utils/deviceSsh';
 import {
   Activity,
   Cpu,
@@ -120,27 +121,21 @@ export const SystemMetricsWidget: React.FC<SystemMetricsWidgetProps> = ({
     const start = performance.now();
 
     try {
-      const response = await fetch('/api/ssh/system-metrics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-
-      const data = await response.json();
+      const { ok, data } = await sshMetrics(config);
       if (generation !== requestGen.current) return;
       if (data.hostFingerprint) onHostFingerprint?.(data.hostFingerprint);
       const elapsed = Math.round(performance.now() - start);
       setLatencyMs(elapsed);
 
-      if (response.ok && data.success && data.pending) {
+      if (ok && data.success && data.pending) {
         setLinkError(null);
         setTelemetryMode('live');
         return;
       }
 
-      if (!response.ok || !data.success || !data.metric || data.mode === 'offline') {
+      if (!ok || !data.success || !data.metric || data.mode === 'offline') {
         setTelemetryMode('down');
-        setLinkError(data.error || data.warning || 'Telemetry link is down. No new sample was recorded.');
+        setLinkError(data.error || 'Telemetry link is down. No new sample was recorded.');
         return;
       }
 
