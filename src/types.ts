@@ -9,6 +9,8 @@ export interface SSHConfig {
   privateKey?: string;
   passphrase?: string;
   timeoutMs?: number;
+  /** SHA-256 host key pin for this host and port. Passwords and private keys are not persisted. */
+  hostFingerprint?: string;
 }
 
 export interface PayloadTemplate {
@@ -59,6 +61,8 @@ export interface PineappleStats {
     karma: boolean;
     reconActive: boolean;
     activeSSIDs: number;
+    /** False until a status command has actually been read. */
+    known?: boolean;
   };
 }
 

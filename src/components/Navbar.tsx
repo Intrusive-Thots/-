@@ -1,23 +1,28 @@
 import React from 'react';
 import { SSHConfig, PineappleStats } from '../types';
-import { Wifi, Terminal, Server, ShieldCheck, AlertTriangle, RefreshCw, Settings, Zap, CalendarClock } from 'lucide-react';
+import { Wifi, Terminal, Server, RefreshCw, Settings, Zap, CalendarClock, Package, Activity } from 'lucide-react';
 
 interface NavbarProps {
   config: SSHConfig;
-  useSimulation: boolean;
-  onToggleSimulation: (val: boolean) => void;
   stats: PineappleStats | null;
   isTesting: boolean;
   onOpenSettings: () => void;
   onRefreshStats: () => void;
-  activeTab: 'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'ai';
-  setActiveTab: (tab: 'dashboard' | 'editor' | 'terminal' | 'scheduler' | 'ai') => void;
+  activeTab: 'dashboard' | 'status' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai';
+  setActiveTab: (tab: 'dashboard' | 'status' | 'editor' | 'terminal' | 'scheduler' | 'device' | 'ai') => void;
 }
+
+const TABS = [
+  { id: 'dashboard' as const, label: 'Dash', desktop: 'Dashboard', icon: Server },
+  { id: 'status' as const, label: 'Live', desktop: 'Status', icon: Activity },
+  { id: 'editor' as const, label: 'Pay', desktop: 'Payloads', icon: Zap },
+  { id: 'terminal' as const, label: 'Term', desktop: 'Terminal', icon: Terminal },
+  { id: 'scheduler' as const, label: 'Jobs', desktop: 'Scheduler', icon: CalendarClock },
+  { id: 'device' as const, label: 'Dev', desktop: 'Device', icon: Package },
+];
 
 export const Navbar: React.FC<NavbarProps> = ({
   config,
-  useSimulation,
-  onToggleSimulation,
   stats,
   isTesting,
   onOpenSettings,
@@ -25,176 +30,91 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
 }) => {
-  const isConnected = stats?.connected;
+  const isConnected = Boolean(stats?.connected);
+  const linkLabel = isConnected ? 'SSH online' : 'Offline';
+  const linkClass = isConnected
+    ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
+    : 'bg-rose-950/60 border-rose-800/60 text-rose-400';
 
   return (
-    <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Brand logo & title */}
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-inner">
-              <Wifi className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-base font-bold text-slate-100 tracking-tight">WiFi Pineapple</h1>
-                <span className="px-1.5 py-0.5 text-[10px] font-mono uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded">
-                  SSH Remote
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-mono">
-                {config.username}@{config.host}:{config.port}
-              </p>
-            </div>
+    <header className="shrink-0 bg-slate-900 border-b border-slate-800 z-30">
+      <div className="px-3 sm:px-6">
+        <div className="flex items-center gap-2 min-h-14 py-2">
+          <div className="shrink-0 w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <Wifi className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-sm font-bold text-slate-100 truncate">PINESSHREMO</h1>
+            <p className="text-[11px] text-slate-400 font-mono truncate">
+              {config.username}@{config.host}:{config.port}
+            </p>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="hidden md:flex items-center space-x-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                activeTab === 'dashboard'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Server className="w-4 h-4" />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('editor')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                activeTab === 'editor'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Zap className="w-4 h-4" />
-              <span>Payload Runner</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('terminal')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                activeTab === 'terminal'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Terminal className="w-4 h-4" />
-              <span>SSH Terminal</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('scheduler')}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                activeTab === 'scheduler'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <CalendarClock className="w-4 h-4" />
-              <span>Scheduler</span>
-            </button>
+          <nav className="hidden lg:flex flex-wrap items-center gap-1 min-w-0">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-medium ${
+                    active ? 'bg-amber-500 text-slate-950 font-semibold' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{tab.desktop}</span>
+                </button>
+              );
+            })}
           </nav>
 
-          {/* Right Controls */}
-          <div className="flex items-center space-x-3">
-            {/* Simulation Mode Switch */}
-            <div className="flex items-center space-x-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-              <span className="text-slate-400 font-mono text-[11px] hidden sm:inline">
-                {useSimulation ? 'Simulated Target' : 'Hardware Target'}
-              </span>
-              <button
-                onClick={() => onToggleSimulation(!useSimulation)}
-                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  useSimulation ? 'bg-amber-500' : 'bg-slate-700'
-                }`}
-                title="Toggle SSH Simulation Mode (for offline or local preview)"
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-slate-950 shadow ring-0 transition duration-200 ease-in-out ${
-                    useSimulation ? 'translate-x-4' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-
-            {/* Connection Status Pill */}
-            <div
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ${
-                isConnected
-                  ? 'bg-emerald-950/60 border-emerald-800/60 text-emerald-400'
-                  : 'bg-rose-950/60 border-rose-800/60 text-rose-400'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-              <span className="font-semibold">{isConnected ? 'SSH ONLINE' : 'OFFLINE'}</span>
-            </div>
-
-            {/* Refresh Stats Button */}
-            <button
-              onClick={onRefreshStats}
-              disabled={isTesting}
-              className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-xl transition-all border border-slate-800"
-              title="Refresh WiFi Pineapple Status"
-            >
-              <RefreshCw className={`w-4 h-4 ${isTesting ? 'animate-spin text-amber-400' : ''}`} />
-            </button>
-
-            {/* Settings Button */}
-            <button
-              onClick={onOpenSettings}
-              className="p-2 text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-800 rounded-xl transition-all border border-slate-700/60 flex items-center space-x-1.5"
-              title="Configure SSH Credentials & Host"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="text-xs font-medium hidden sm:inline">Config</span>
-            </button>
+          <div
+            className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-2.5 rounded-xl text-[11px] font-mono border ${linkClass}`}
+            title={linkLabel}
+          >
+            <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+            <span className="font-semibold">{isConnected ? 'On' : 'Off'}</span>
           </div>
+          <button
+            type="button"
+            onClick={onRefreshStats}
+            disabled={isTesting}
+            className="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-xl border border-slate-800"
+            title="Refresh status"
+          >
+            <RefreshCw className={`w-4 h-4 ${isTesting ? 'animate-spin text-amber-400' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            className="shrink-0 min-h-11 min-w-11 inline-flex items-center justify-center text-slate-100 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700"
+            title="Config"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Mobile Navigation Row */}
-        <div className="flex md:hidden items-center justify-around py-2 border-t border-slate-800/60 text-xs">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded-lg ${
-              activeTab === 'dashboard' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <Server className="w-3.5 h-3.5" />
-            <span>Dashboard</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('editor')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded-lg ${
-              activeTab === 'editor' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5" />
-            <span>Payloads</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('terminal')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded-lg ${
-              activeTab === 'terminal' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <Terminal className="w-3.5 h-3.5" />
-            <span>Terminal</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('scheduler')}
-            className={`flex items-center space-x-1 px-3 py-1 rounded-lg ${
-              activeTab === 'scheduler' ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400'
-            }`}
-          >
-            <CalendarClock className="w-3.5 h-3.5" />
-            <span>Scheduler</span>
-          </button>
-        </div>
+        <nav className="grid grid-cols-6 gap-1 pb-2 lg:hidden" aria-label="Screens">
+          {TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`min-h-11 min-w-0 px-1 rounded-lg flex flex-col items-center justify-center gap-0.5 ${
+                  active ? 'bg-amber-500 text-slate-950 font-bold' : 'text-slate-400'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="text-[10px] leading-none truncate max-w-full">{tab.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
     </header>
   );

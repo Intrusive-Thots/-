@@ -24,6 +24,7 @@ import {
   Info,
 } from 'lucide-react';
 import { parseDocBlockFromCode } from '../utils/payloadDocUtils';
+import { AiFixButton } from './AiFixButton';
 
 interface PayloadEditorProps {
   onRunPayload: (code: string, language: 'bash' | 'python' | 'uci', name: string) => void;
@@ -32,6 +33,7 @@ interface PayloadEditorProps {
   lastLog: ExecutionLog | null;
   onOpenAiGenerator: () => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
   injectedCode?: { code: string; language: 'bash' | 'python' | 'uci'; name?: string } | null;
   onClearInjectedCode?: () => void;
 }
@@ -43,6 +45,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
   lastLog,
   onOpenAiGenerator,
   onAnalyzeLog,
+  onAiFix,
   injectedCode,
   onClearInjectedCode,
 }) => {
@@ -282,17 +285,14 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
   const isCurrentCustom = templates.some((t) => t.id === selectedTemplateId && t.isCustom);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Top Header Controls Bar */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <Zap className="w-5 h-5 text-amber-400" />
-              <h2 className="text-lg font-bold text-slate-100 font-mono">WiFi Pineapple Code Runner & Library</h2>
-              <span className="text-xs px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 rounded-full font-mono">
-                v2.1
-              </span>
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
+              <Zap className="w-5 h-5 text-amber-400 shrink-0" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-100">Payload library</h2>
             </div>
             <p className="text-xs text-slate-400">
               Compose, document, and execute payloads with inline docstrings, saved descriptions, and autonomous scheduling
@@ -303,10 +303,10 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
             {/* AI Generator Button */}
             <button
               onClick={onOpenAiGenerator}
-              className="flex items-center space-x-2 px-3.5 py-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all shadow-sm font-mono"
+              className="flex items-center justify-center space-x-2 min-h-11 px-3.5 py-3 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-sm font-bold transition-all shadow-sm font-mono"
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Generate with Gemini</span>
+              <span>Generate with AI</span>
             </button>
 
             {/* Schedule Button */}
@@ -314,7 +314,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
               <button
                 onClick={() => onSchedulePayload(scriptName || 'Custom Payload', code, language)}
                 disabled={!code.trim()}
-                className="flex items-center space-x-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm font-mono disabled:opacity-50"
+                className="flex items-center justify-center space-x-2 min-h-11 px-3.5 py-3 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 rounded-xl text-sm font-bold transition-all shadow-sm font-mono disabled:opacity-50"
                 title="Schedule this payload to run on intervals or specific time"
               >
                 <CalendarClock className="w-4 h-4 text-amber-400" />
@@ -326,7 +326,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
             <button
               onClick={handleRun}
               disabled={isExecuting || !code.trim()}
-              className="flex items-center space-x-2 px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs shadow-lg transition-all font-mono disabled:opacity-50"
+              className="flex items-center justify-center space-x-2 min-h-11 px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-sm shadow-lg transition-all font-mono disabled:opacity-50"
             >
               <Play className="w-4 h-4 fill-current" />
               <span>{isExecuting ? 'Running on Hardware...' : 'Run on Pineapple'}</span>
@@ -378,7 +378,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                   value={scriptName}
                   onChange={(e) => setScriptName(e.target.value)}
                   placeholder="Payload Name"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-sm font-bold text-slate-100 font-mono focus:outline-none focus:border-amber-500 transition-colors"
+                  className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-base font-bold text-slate-100 font-mono focus:outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
 
@@ -387,7 +387,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
+                  className="min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
                 >
                   <option value="bash">Bash / Shell (/bin/sh)</option>
                   <option value="python">Python 3 (python3)</option>
@@ -398,7 +398,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value as any)}
-                  className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
+                  className="min-h-11 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors cursor-pointer"
                 >
                   <option value="custom">Custom / Saved</option>
                   <option value="pineap">PineAP</option>
@@ -411,7 +411,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowDocPanel(!showDocPanel)}
-                  className={`flex items-center space-x-1 px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all border ${
+                  className={`flex items-center space-x-1 min-h-11 px-3 rounded-xl text-sm font-mono font-bold transition-all border ${
                     showDocPanel
                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
@@ -426,7 +426,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
             </div>
 
             {/* Quick action strip: Save, Upload, Download, Copy */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs font-mono">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2 border-t border-slate-800 text-xs font-mono">
               <div className="flex items-center space-x-2 text-slate-400 text-[11px]">
                 <span>Status:</span>
                 <span className={`px-2 py-0.5 rounded font-bold ${isCurrentCustom ? 'bg-purple-950 text-purple-300 border border-purple-800/60' : 'bg-slate-800 text-slate-300'}`}>
@@ -439,8 +439,8 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center space-x-2">
-                <label className="cursor-pointer px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] border border-slate-700 transition-colors flex items-center space-x-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="cursor-pointer min-h-11 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm border border-slate-700 transition-colors flex items-center space-x-1">
                   <Upload className="w-3 h-3 text-slate-400" />
                   <span>Import</span>
                   <input type="file" onChange={handleFileUpload} accept=".sh,.py,.txt" className="hidden" />
@@ -448,7 +448,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
 
                 <button
                   onClick={handleDownloadScript}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] border border-slate-700 transition-colors flex items-center space-x-1"
+                  className="min-h-11 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm border border-slate-700 transition-colors flex items-center space-x-1"
                   title="Download payload script file"
                 >
                   <Download className="w-3 h-3 text-slate-400" />
@@ -457,7 +457,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
 
                 <button
                   onClick={handleCopyCode}
-                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] border border-slate-700 transition-colors flex items-center space-x-1"
+                  className="min-h-11 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm border border-slate-700 transition-colors flex items-center space-x-1"
                 >
                   {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
                   <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -466,7 +466,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                 {/* Save / Update button */}
                 <button
                   onClick={handleSavePayload}
-                  className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-[11px] font-bold border border-amber-500/40 transition-colors flex items-center space-x-1.5 shadow-sm"
+                  className="min-h-11 px-3 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-sm font-bold border border-amber-500/40 transition-colors flex items-center space-x-1.5 shadow-sm"
                   title="Save payload with description and metadata to library"
                 >
                   <Save className="w-3.5 h-3.5 text-amber-400" />
@@ -512,7 +512,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
             </div>
 
             {/* Code Textarea Area */}
-            <div className="p-4 bg-slate-950 font-mono text-xs">
+            <div className="p-3 sm:p-4 bg-slate-950 font-mono text-sm">
               <textarea
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -530,9 +530,9 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                     }, 0);
                   }
                 }}
-                rows={16}
+                rows={18}
                 spellCheck={false}
-                className="w-full bg-transparent text-amber-200/90 leading-relaxed focus:outline-none resize-none font-mono selection:bg-amber-500/30"
+                className="w-full min-h-[40vh] bg-transparent text-amber-200/90 leading-relaxed focus:outline-none resize-y font-mono text-base selection:bg-amber-500/30"
                 placeholder="# Write your WiFi Pineapple script here..."
               />
             </div>
@@ -541,7 +541,7 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
           {/* Execution Output Console Box */}
           {lastLog && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center space-x-3">
                   <div
                     className={`p-2 rounded-xl border ${
@@ -569,13 +569,16 @@ export const PayloadEditor: React.FC<PayloadEditorProps> = ({
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onAnalyzeLog(lastLog)}
-                  className="flex items-center space-x-2 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all font-mono"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Analyze Output with Gemini</span>
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {lastLog.status === 'failed' && onAiFix && <AiFixButton onClick={() => onAiFix(lastLog)} />}
+                  <button
+                    onClick={() => onAnalyzeLog(lastLog)}
+                    className="inline-flex items-center gap-2 min-h-11 px-3 bg-slate-800 text-amber-200 border border-slate-700 rounded-xl text-xs font-bold"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Analyze output</span>
+                  </button>
+                </div>
               </div>
 
               {/* STDOUT View */}

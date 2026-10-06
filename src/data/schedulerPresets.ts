@@ -3,7 +3,7 @@ import { ScheduledPayloadJob } from '../types';
 export const DEFAULT_SCHEDULER_PRESETS: Omit<ScheduledPayloadJob, 'id' | 'createdAt' | 'runCount' | 'history'>[] = [
   {
     name: 'Periodic Reconnaissance Sweep',
-    description: 'Scans 2.4GHz & 5GHz channels via wlan1mon and logs discovered SSIDs and BSSIDs.',
+    description: 'Surveys the live wireless interface with iw or iwinfo and logs the first lines of the scan.',
     language: 'bash',
     triggerType: 'interval',
     intervalMinutes: 15,
@@ -11,23 +11,33 @@ export const DEFAULT_SCHEDULER_PRESETS: Omit<ScheduledPayloadJob, 'id' | 'create
     targetEngine: 'app',
     enabled: true,
     code: `#!/bin/sh
-# WiFi Pineapple Periodic Wireless Recon Sweep
-MON_IF="wlan1mon"
-TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+# Survey the interface that is already up. ash has no airmon-ng.
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 LOG_DIR="/tmp/recon_logs"
-
 mkdir -p "$LOG_DIR"
-echo "=== [ $TIMESTAMP ] WIRELESS RECON SWEEP ==="
-
-if ! ifconfig "$MON_IF" >/dev/null 2>&1; then
-    echo "[!] Bringing up $MON_IF..."
-    airmon-ng start wlan1 2>/dev/null || true
+IFACE=""
+if command -v iw >/dev/null 2>&1; then
+  IFACE=$(iw dev 2>/dev/null | awk '/Interface/{print $2; exit}')
 fi
-
-echo "[+] Scanning active BSSIDs and beacons..."
-iw dev "$MON_IF" scan 2>/dev/null | grep -E "(SSID:|BSS|signal:)" | head -n 40 | tee "$LOG_DIR/scan_$TIMESTAMP.log"
-
-echo "[+] Recon sweep completed. Output cached in $LOG_DIR."`,
+if [ -z "$IFACE" ]; then
+  for cand in wlan0 wlan1; do
+    if ifconfig "$cand" >/dev/null 2>&1; then
+      IFACE=$cand
+      break
+    fi
+  done
+fi
+echo "=== [ $TIMESTAMP ] survey \${IFACE:-none} ===" | tee "$LOG_DIR/scan_$TIMESTAMP.log"
+if [ -z "$IFACE" ]; then
+  echo "No wireless interface" | tee -a "$LOG_DIR/scan_$TIMESTAMP.log"
+elif command -v iwinfo >/dev/null 2>&1; then
+  iwinfo "$IFACE" scan 2>/dev/null | head -n 40 | tee -a "$LOG_DIR/scan_$TIMESTAMP.log"
+elif command -v iw >/dev/null 2>&1; then
+  iw dev "$IFACE" scan 2>/dev/null | head -n 40 | tee -a "$LOG_DIR/scan_$TIMESTAMP.log"
+else
+  ifconfig | tee -a "$LOG_DIR/scan_$TIMESTAMP.log"
+fi
+echo "Saved $LOG_DIR/scan_$TIMESTAMP.log"`,
   },
   {
     name: 'PineAP Client Associations Watchdog',
@@ -45,10 +55,10 @@ echo "Timestamp: $(date)"
 
 if command -v pineap >/dev/null 2>&1; then
     echo "[+] Querying PineAP Daemon..."
-    pineap get_status
+    pineap get_status 2>/dev/null || pineap status 2>/dev/null || pineap /tmp/pineap.conf get_status 2>/dev/null || echo "pineap status verb was rejected"
 else
-    echo "[-] PineAP binary not found. Checking hostapd interfaces:"
-    iw dev
+    echo "[-] PineAP binary not found. Checking interfaces:"
+    iw dev 2>/dev/null || ifconfig
 fi
 
 echo ""
@@ -88,11 +98,11 @@ df -h
 
 echo ""
 echo "=== THERMAL & WIRELESS WARNINGS ==="
-dmesg | grep -iE "(ath9k|wireless|oom|overheat|voltage|error)" | tail -n 15`,
+dmesg 2>/dev/null | grep -i -e ath9k -e wireless -e oom -e overheat -e voltage -e error | tail -n 15 || dmesg 2>/dev/null | tail -n 15`,
   },
   {
     name: 'PineAP SSID Pool Auto-Refresh',
-    description: 'Ensures target SSID pool is populated with common enterprise & public hotspot profiles.',
+    description: 'Re-enables the PineAP pool and beacon switches this app already uses. It does not add SSID names.',
     language: 'bash',
     triggerType: 'interval',
     intervalMinutes: 60,
@@ -104,13 +114,10 @@ dmesg | grep -iE "(ath9k|wireless|oom|overheat|voltage|error)" | tail -n 15`,
 echo "=== PINEAP SSID POOL REFRESH ==="
 
 if command -v pineap >/dev/null 2>&1; then
-    echo "[+] Verifying SSID pool status..."
-    pineap get_status | grep -i "pool" || true
-    
-    # Reload broadcast state
-    pineap ap_pool enable
-    pineap beacon_response enable
-    echo "[+] PineAP SSID broadcast state synchronized."
+    pineap get_status 2>/dev/null | grep -i pool || pineap /tmp/pineap.conf get_status 2>/dev/null | grep -i pool || true
+    pineap ap_pool enable 2>/dev/null || pineap broadcast_pool on 2>/dev/null || pineap /tmp/pineap.conf broadcast_pool on 2>/dev/null || true
+    pineap beacon_response enable 2>/dev/null || pineap beacon_responses on 2>/dev/null || pineap /tmp/pineap.conf beacon_responses on 2>/dev/null || true
+    echo "[+] PineAP pool and beacon switches were refreshed."
 else
     echo "[-] pineap command unavailable on this target."
 fi`,

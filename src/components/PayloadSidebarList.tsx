@@ -137,7 +137,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
         <div className="flex items-center space-x-1">
           <button
             onClick={onNewScript}
-            className="flex items-center space-x-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-bold transition-all shadow-sm"
+            className="flex items-center space-x-1 min-h-11 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-sm font-bold transition-all shadow-sm"
             title="Create a new custom payload script"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -146,7 +146,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
 
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-800 rounded-lg transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-400 hover:text-slate-200 bg-slate-800/80 hover:bg-slate-800 rounded-lg transition-colors"
             title="Collapse Sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -156,18 +156,18 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
 
       {/* Search Bar */}
       <div className="relative">
-        <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-500" />
+        <Search className="w-4 h-4 absolute left-3 top-3.5 text-slate-500" />
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search by title, description, notes..."
-          className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-7 py-1.5 text-xs text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500 transition-colors"
+          className="w-full min-h-11 bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-12 py-3 text-base text-slate-200 placeholder-slate-500 font-mono focus:outline-none focus:border-amber-500 transition-colors"
         />
         {searchTerm && (
           <button
             onClick={() => onSearchChange('')}
-            className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+            className="absolute right-1 top-1 min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-slate-300"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -175,14 +175,14 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
       </div>
 
       {/* Category Filter Pills */}
-      <div className="flex items-center space-x-1 overflow-x-auto pb-1 scrollbar-none text-[11px] font-mono">
+      <div className="flex flex-wrap items-center gap-1 text-xs font-mono">
         {CATEGORY_TABS.map((tab) => {
           const isActive = categoryFilter === tab.id;
           return (
             <button
               key={tab.id}
               onClick={() => onCategoryFilterChange(tab.id)}
-              className={`px-2.5 py-1 rounded-lg transition-colors whitespace-nowrap ${
+              className={`min-h-11 px-3 rounded-lg transition-colors whitespace-nowrap ${
                 isActive
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold'
                   : 'bg-slate-800/70 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent'
@@ -196,7 +196,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
       </div>
 
       {/* Script Items List */}
-      <div className="space-y-2 overflow-y-auto max-h-[640px] pr-1">
+      <div className="space-y-2 overflow-y-auto max-h-[40vh] lg:max-h-[640px] pr-1">
         {filteredTemplates.length === 0 ? (
           <div className="p-6 text-center bg-slate-950/60 border border-slate-800/80 rounded-xl space-y-2">
             <Info className="w-6 h-6 text-slate-600 mx-auto" />
@@ -218,7 +218,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
               <div
                 key={tmpl.id}
                 onClick={() => onSelectTemplate(tmpl)}
-                className={`group relative p-3 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${
+                className={`group relative p-4 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${
                   isSelected
                     ? 'bg-amber-500/10 border-amber-500/60 shadow-md shadow-amber-950/20'
                     : 'bg-slate-950/60 hover:bg-slate-800/60 border-slate-800/80 hover:border-slate-700'
@@ -302,7 +302,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
                         e.stopPropagation();
                         onDuplicateScript(tmpl);
                       }}
-                      className="p-1 hover:text-amber-300 rounded hover:bg-slate-800 transition-colors"
+                      className="min-h-11 min-w-11 inline-flex items-center justify-center hover:text-amber-300 rounded hover:bg-slate-800 transition-colors"
                       title="Duplicate script as a new copy"
                     >
                       <Copy className="w-3 h-3" />
@@ -316,7 +316,7 @@ export const PayloadSidebarList: React.FC<PayloadSidebarListProps> = ({
                             onDeleteCustomScript(tmpl.id);
                           }
                         }}
-                        className="p-1 text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center text-slate-500 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
                         title="Delete this saved script"
                       >
                         <Trash2 className="w-3 h-3" />

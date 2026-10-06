@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { SSHConfig, PayloadTemplate, QueuedPayloadItem, AggregatedQueueLog, ExecutionLog } from '../types';
 import { INITIAL_PAYLOAD_TEMPLATES } from '../data/payloadTemplates';
+import { sshExec } from '../utils/deviceSsh';
 import {
   ListOrdered,
   Play,
@@ -30,17 +31,19 @@ import {
 
 interface QueuedPayloadRunnerProps {
   config: SSHConfig;
-  useSimulation: boolean;
   onAddExecutionLog: (log: ExecutionLog) => void;
   onAnalyzeLog: (log: ExecutionLog) => void;
+  onAiFix?: (log: ExecutionLog) => void;
+  onHostFingerprint?: (fingerprint: string) => void;
   onClose?: () => void;
 }
 
 export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
   config,
-  useSimulation,
   onAddExecutionLog,
   onAnalyzeLog,
+  onAiFix,
+  onHostFingerprint,
   onClose,
 }) => {
   // Load templates (initial + any local custom templates)
@@ -62,19 +65,19 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
     {
       id: 'queue_init_1',
       templateId: 'pineap-status',
-      name: 'PineAP Status Check',
+      name: 'PineAP Status',
       category: 'pineap',
       language: 'bash',
-      code: INITIAL_PAYLOAD_TEMPLATES[0].code,
+      code: (INITIAL_PAYLOAD_TEMPLATES.find((template) => template.id === 'pineap-status') || INITIAL_PAYLOAD_TEMPLATES[0]).code,
       status: 'pending',
     },
     {
       id: 'queue_init_2',
-      templateId: 'system-diag-health',
-      name: 'Full Hardware & Storage Health Check',
+      templateId: 'storage-sd',
+      name: 'Storage And SD Card',
       category: 'system',
       language: 'bash',
-      code: INITIAL_PAYLOAD_TEMPLATES[4].code,
+      code: (INITIAL_PAYLOAD_TEMPLATES.find((template) => template.id === 'storage-sd') || INITIAL_PAYLOAD_TEMPLATES[0]).code,
       status: 'pending',
     },
   ]);
@@ -230,7 +233,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
 
     let output = `${divider}\n`;
     output += `WIFI PINEAPPLE BATCH PAYLOAD EXECUTION REPORT\n`;
-    output += `Target: ${config.username}@${config.host}:${config.port} (${useSimulation ? 'SIMULATION MODE' : 'HARDWARE'})\n`;
+    output += `Target: ${config.username}@${config.host}:${config.port}\n`;
     output += `Timestamp: ${dateStr}\n`;
     output += `Total Payloads in Queue: ${executedItems.length}\n`;
     output += `Overall Status: ${overallStatus.toUpperCase()}\n`;
@@ -340,21 +343,11 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
           currentQueue[i].language === 'python' ? 'py' : 'sh'
         }`;
 
-        const res = await fetch('/api/ssh/exec', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            config: { ...config, useSimulation },
-            command: currentQueue[i].code,
-            asScript: true,
-            filename,
-          }),
-        });
-
-        const data = await res.json();
+        const { ok, data } = await sshExec(config, currentQueue[i].code, { asScript: true, filename });
+        if (data.hostFingerprint) onHostFingerprint?.(data.hostFingerprint);
         const itemDurationMs = Date.now() - itemStartTime;
 
-        if (res.ok && data.success && (data.exitCode === 0 || data.exitCode === null)) {
+        if (ok && data.success && data.exitCode === 0) {
           currentQueue[i].status = 'completed';
           currentQueue[i].stdout = data.stdout || '';
           currentQueue[i].stderr = data.stderr || '';
@@ -764,7 +757,7 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className={`p-3 rounded-xl border transition-all flex items-center justify-between ${
+                      className={`p-3 rounded-xl border transition-all flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between ${
                         isCurrent
                           ? 'bg-amber-500/10 border-amber-500 text-amber-200 ring-1 ring-amber-500/30 shadow-lg'
                           : item.status === 'completed'
@@ -816,6 +809,27 @@ export const QueuedPayloadRunner: React.FC<QueuedPayloadRunnerProps> = ({
                       <div className="flex items-center space-x-2 shrink-0 ml-2">
                         {item.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                         {item.status === 'failed' && <XCircle className="w-4 h-4 text-rose-400" />}
+                        {item.status === 'failed' && onAiFix && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onAiFix({
+                                id: item.id,
+                                command: `[Payload Script: ${item.name}]`,
+                                timestamp: new Date().toLocaleTimeString(),
+                                stdout: item.stdout || '',
+                                stderr: item.stderr || item.error || '',
+                                exitCode: item.exitCode ?? 1,
+                                durationMs: item.durationMs || 0,
+                                status: 'failed',
+                                host: config.host,
+                              })
+                            }
+                            className="min-h-11 px-3 rounded-lg text-xs font-bold bg-amber-500/15 text-amber-200 border border-amber-500/40"
+                          >
+                            AI Fix
+                          </button>
+                        )}
                         {isCurrent && <Clock className="w-4 h-4 text-amber-400 animate-spin" />}
 
                         {!isRunning && (

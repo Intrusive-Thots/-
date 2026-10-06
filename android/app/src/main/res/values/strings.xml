@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PINESSHREMO</string>
+    <string name="title_activity_main">PINESSHREMO</string>
+    <string name="package_name">com.intrusivethots.pinesshremo</string>
+    <string name="custom_url_scheme">com.intrusivethots.pinesshremo</string>
+</resources>
